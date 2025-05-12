@@ -10,6 +10,7 @@ import time
 import sys
 import os
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import KFold
 
 # 设置数据路径
 data_dir = './data/Kaggle_house'
@@ -73,3 +74,185 @@ print(f"测试特征张量形状: {test_features_tensor.shape}")
 
 # 创建数据集
 train_dataset = torch.utils.data.TensorDataset(train_features_tensor, train_labels_tensor)
+
+# 定义MLP模型
+class HousePriceMLP(nn.Module):
+    def __init__(self, input_size):
+        super(HousePriceMLP, self).__init__()
+        # 第一层: input_size -> 256
+        self.layer1 = nn.Sequential(
+            nn.Linear(input_size, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU()
+        )
+        # 第二层: 256 -> 128
+        self.layer2 = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU()
+        )
+        # 输出层: 128 -> 1
+        self.output = nn.Linear(128, 1)
+    
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.output(x)
+        return x
+
+# 定义评估函数
+def evaluate_model(model, data_loader, criterion, device):
+    model.eval()
+    total_loss = 0
+    with torch.no_grad():
+        for X, y in data_loader:
+            X, y = X.to(device), y.to(device)
+            output = model(X)
+            loss = criterion(output, y)
+            total_loss += loss.item() * X.size(0)
+    return total_loss / len(data_loader.dataset)
+
+# 定义训练函数
+def train_model(model, train_loader, val_loader, criterion, optimizer, device, num_epochs, fold):
+    # 创建图形
+    plt.ion()
+    fig = plt.figure(figsize=(10, 6))
+    ax = plt.gca()
+    
+    train_losses = []
+    train_epochs = []
+    val_losses = []
+    best_val_loss = float('inf')
+    step_count = 0
+    
+    for epoch in range(num_epochs):
+        model.train()
+        train_loss = 0
+        for i, (X, y) in enumerate(train_loader):
+            X, y = X.to(device), y.to(device)
+            
+            # 前向传播
+            output = model(X)
+            loss = criterion(output, y)
+            
+            # 反向传播和优化
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            train_loss += loss.item() * X.size(0)
+            
+            # 每10个batch更新一次图像
+            if i % 10 == 0:
+                step_count += 1
+                current_train_loss = train_loss / ((i + 1) * X.size(0))
+                train_losses.append(current_train_loss)
+                train_epochs.append(epoch + i/len(train_loader))
+                  # 更新损失曲线（使用对数坐标）
+                ax.clear()
+                ax.semilogy(train_epochs, train_losses, label='Train Loss', alpha=0.6)
+                if val_losses:  # 如果有验证损失则也画出来
+                    ax.semilogy(range(1, epoch + 1), val_losses, label='Val Loss', alpha=0.6)
+                    # 检测过拟合（如果验证损失比训练损失大50%以上）
+                    if val_losses[-1] > current_train_loss * 1.5:
+                        ax.text(0.98, 0.98, 'Warning: Overfitted', 
+                               transform=ax.transAxes,
+                               horizontalalignment='right',
+                               verticalalignment='top',
+                               color='red',
+                               bbox=dict(facecolor='white', alpha=0.8))
+                ax.set_xlabel('Epochs')
+                ax.set_ylabel('Loss (log scale)')
+                ax.set_title(f'Training Progress (Fold {fold+1})')
+                ax.legend()
+                ax.grid(True)
+                
+                plt.tight_layout()
+                plt.pause(0.1)
+        
+        # 计算epoch的平均损失
+        train_loss = train_loss / len(train_loader.dataset)
+        val_loss = evaluate_model(model, val_loader, criterion, device)
+        val_losses.append(val_loss)
+        
+        print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')  # 保存最佳模型（使用Python文件名作为前缀）
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            model_filename = f'Chpt_3_Kaggle_house_price_model_fold{fold+1}.pth'
+            torch.save(model.state_dict(), model_filename)
+    
+    plt.ioff()
+    return train_losses, val_losses
+
+# 设置超参数和训练配置
+input_size = train_features.shape[1]
+batch_size = 64
+num_epochs = 50
+learning_rate = 0.001
+k_folds = 5
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# 准备K折交叉验证
+kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+
+# 记录每折的性能
+fold_train_losses = []
+fold_val_losses = []
+best_fold = 0
+best_val_loss = float('inf')
+
+# K折交叉验证训练循环
+for fold, (train_idx, val_idx) in enumerate(kf.split(train_features_tensor)):
+    print(f'\nFold {fold + 1}/{k_folds}')
+    
+    # 准备数据加载器
+    train_data = torch.utils.data.TensorDataset(
+        train_features_tensor[train_idx], 
+        train_labels_tensor[train_idx]
+    )
+    val_data = torch.utils.data.TensorDataset(
+        train_features_tensor[val_idx], 
+        train_labels_tensor[val_idx]
+    )
+    
+    train_loader = torch.utils.data.DataLoader(
+        train_data, batch_size=batch_size, shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_data, batch_size=batch_size
+    )
+    
+    # 创建模型、损失函数和优化器
+    model = HousePriceMLP(input_size).to(device)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    
+    # 训练模型
+    train_losses, val_losses = train_model(
+        model, train_loader, val_loader, 
+        criterion, optimizer, device, num_epochs, fold
+    )
+      # 记录最终训练和验证损失
+    final_train_loss = train_losses[-1]
+    final_val_loss = val_losses[-1]
+    fold_train_losses.append(final_train_loss)
+    fold_val_losses.append(final_val_loss)
+    
+    # 如果这一折的验证损失是目前最好的，保存模型
+    if final_val_loss < best_val_loss:
+        best_val_loss = final_val_loss
+        best_fold = fold
+        # 保存新的最佳模型，并删除之前的模型
+        model_filename = f'Chpt_3_Kaggle_house_price_best_model.pth'
+        torch.save(model.state_dict(), model_filename)
+        
+# 打印最终结果
+print('\n交叉验证结果:')
+print(f'{"折数":^6} {"训练MSE":^12} {"验证MSE":^12}')
+print('-' * 32)
+for fold in range(k_folds):
+    print(f'{fold + 1:^6d} {fold_train_losses[fold]:^12.4f} {fold_val_losses[fold]:^12.4f}')
+print('-' * 32)
+print(f'平均MSE: 训练={sum(fold_train_losses) / k_folds:.4f}, '
+      f'验证={sum(fold_val_losses) / k_folds:.4f}')
+print(f'\n最佳模型来自第 {best_fold + 1} 折，验证MSE = {best_val_loss:.4f}')
