@@ -1,0 +1,23 @@
+data:
+  train_file: "data/raw/train.csv"
+  test_file: "data/raw/test.csv"
+  description_file: "data/raw/data_description.txt"
+  submission_file: "data/raw/sample_submission.csv"
+  processed_dir: "data/processed"
+
+model:
+  input_size: null  # 将在运行时根据数据确定
+  hidden_size: 32
+  dropout_rate: 0.3
+  
+training:
+  batch_size: 64
+  num_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.05
+  k_folds: 5
+  
+paths:
+  model_save_dir: "outputs/models"
+  log_dir: "outputs/logs"
+  visualization_dir: "outputs/visualizations"
