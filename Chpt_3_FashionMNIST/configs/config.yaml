@@ -1,0 +1,26 @@
+# 数据集配置
+data:
+  root_dir: "../data/FashionMNIST"
+  batch_size: 256
+  num_workers: 4
+
+# 模型配置
+model:
+  type: "mlp"  # 可选: "softmax", "mlp"
+  hidden_units: [256, 128]  # 仅在type="mlp"时使用
+  dropout_rate: 0.5  # 仅在type="mlp"时使用
+
+# 训练配置
+training:
+  num_epochs: 10
+  learning_rate: 0.1
+  weight_decay: 1e-4
+  device: "cuda"  # 可选: "cuda", "cpu"
+  save_dir: "../outputs/models"
+  log_dir: "../outputs/logs"
+  viz_dir: "../outputs/visualizations"
+
+# 日志配置
+logging:
+  log_interval: 100  # 每多少个batch记录一次日志
+  eval_interval: 1  # 每多少个epoch进行一次验证

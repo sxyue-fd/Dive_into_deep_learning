@@ -1,0 +1,30 @@
+# 数据生成配置
+data:
+  num_examples: 1000
+  true_w: [2.0, -3.4]
+  true_b: 4.2
+  noise_sigma: 0.01
+  features_mean: 0.0
+  features_std: 1.0
+  train_ratio: 0.8
+  batch_size: 128
+  seed: 42
+
+# 模型配置
+model:
+  type: "from_zero"  # 可选: "from_zero", "simplified"
+  input_dim: 2
+  output_dim: 1
+
+# 训练配置
+training:
+  num_epochs: 100
+  learning_rate: 0.03
+  device: "cpu"  # 可选: "cuda", "cpu"
+  save_dir: "../outputs/models"
+  log_dir: "../outputs/logs"
+  viz_dir: "../outputs/visualizations"
+
+# 日志配置
+logging:
+  log_interval: 10  # 每多少个epoch记录一次日志
