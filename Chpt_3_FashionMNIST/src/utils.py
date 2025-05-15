@@ -197,7 +197,7 @@ def plot_sample_predictions(images, true_labels, pred_labels, output_path, num_s
     plt.figure(figsize=(10, 10))
     for i, idx in enumerate(indices):
         plt.subplot(3, 3, i + 1)
-        plt.imshow(images[idx].reshape(28, 28), cmap='gray')
+        plt.imshow(images[idx].reshape(28, 28), cmap='viridis')
         color = 'green' if true_labels[idx] == pred_labels[idx] else 'red'
         plt.title(f'True: {get_fashion_mnist_labels()[true_labels[idx]]}\nPred: {get_fashion_mnist_labels()[pred_labels[idx]]}',
                  color=color, fontsize=10)  # 增加字体大小到10
@@ -257,7 +257,7 @@ def visualize_sample_predictions(images, true_labels, pred_labels, output_path):
     plt.figure(figsize=(12, 2*n))
     for i in range(n):
         plt.subplot(n, 1, i+1)
-        plt.imshow(images[i].reshape(28, 28), cmap='gray')
+        plt.imshow(images[i].reshape(28, 28), cmap='viridis')
         title = f"True: {class_names[true_labels[i]]}, Pred: {class_names[pred_labels[i]]}"
         color = "green" if true_labels[i] == pred_labels[i] else "red"
         plt.title(title, color=color)
