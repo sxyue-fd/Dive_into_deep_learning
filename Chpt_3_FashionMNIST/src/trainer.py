@@ -288,33 +288,28 @@ class Trainer:
             x = x.to(self.device)
             output = self.model(x)
             pred = output.argmax(dim=1)
-            return get_fashion_mnist_labels()[pred.item()]
-
+            return get_fashion_mnist_labels()[pred.item()]    
     def visualize_predictions(self, test_loader):
         """可视化预测结果"""
         self.model.eval()
         all_preds = []
         all_labels = []
-        selected_images = []
-        selected_labels = []
-        selected_preds = []
+        all_images = []
         
         with torch.no_grad():
-            for i, (images, labels) in enumerate(test_loader):
-                if i == 0:  # 只保存第一个batch的图像用于可视化
-                    selected_images = images.cpu()
-                    selected_labels = labels.cpu()
-                
+            for images, labels in test_loader:
                 images = images.to(self.device)
                 labels = labels.to(self.device)
                 outputs = self.model(images)
                 _, preds = torch.max(outputs, 1)
                 
-                if i == 0:
-                    selected_preds = preds.cpu()
-                
-                all_preds.extend(preds.cpu().numpy())
+                # 保存所有图像、标签和预测结果
+                all_images.append(images.cpu())
+                all_preds.extend(preds.cpu().numpy())                
                 all_labels.extend(labels.cpu().numpy())
+        
+        # 将所有图像合并成一个张量
+        all_images = torch.cat(all_images, 0)
         
         # 计算混淆矩阵
         from sklearn.metrics import confusion_matrix
@@ -328,12 +323,12 @@ class Trainer:
             self.viz_dir / 'confusion_matrix.png'
         )
         
-        # 可视化样本预测
+        # 可视化样本预测（从所有测试集中随机选择）
         from utils import plot_sample_predictions
         plot_sample_predictions(
-            selected_images,
-            selected_labels,
-            selected_preds,
+            all_images,
+            torch.tensor(all_labels),
+            torch.tensor(all_preds),
             self.viz_dir / 'sample_predictions.png'
         )
         

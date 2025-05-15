@@ -114,6 +114,9 @@ def plot_training_curves(train_losses, valid_losses, train_accs, valid_accs, ste
         steps_per_point: 每个数据点之间的batch数
         output_path: 输出图像的路径
     """
+    # 设置全局字体大小
+    plt.rcParams.update({'font.size': 12})
+    
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
     
     # 生成步数坐标
@@ -121,18 +124,20 @@ def plot_training_curves(train_losses, valid_losses, train_accs, valid_accs, ste
     
     # 损失曲线 (使用对数坐标)
     ax1.semilogy(steps, train_losses, label='Loss', color='#1f77b4', alpha=0.7)
-    ax1.set_xlabel('Steps (batches)')
-    ax1.set_ylabel('Loss (log scale)')
-    ax1.set_title('Training Loss')
-    ax1.legend()
+    ax1.set_xlabel('Steps (batches)', fontsize=14)
+    ax1.set_ylabel('Loss (log scale)', fontsize=14)
+    ax1.set_title('Training Loss', fontsize=16)
+    ax1.legend(fontsize=12)
     ax1.grid(True, linestyle='--', alpha=0.6)
+    ax1.tick_params(axis='both', which='major', labelsize=12)
     
     # 准确率曲线
     ax2.plot(steps, train_accs, label='Accuracy', color='#2ca02c', alpha=0.7)
-    ax2.set_xlabel('Steps (batches)')
-    ax2.set_ylabel('Accuracy')
-    ax2.set_title('Training Accuracy')
-    ax2.legend()
+    ax2.set_xlabel('Steps (batches)', fontsize=14)
+    ax2.set_ylabel('Accuracy', fontsize=14)
+    ax2.set_title('Training Accuracy', fontsize=16)
+    ax2.legend(fontsize=12)
+    ax2.tick_params(axis='both', which='major', labelsize=12)
     
     plt.tight_layout()
     plt.savefig(output_path)
@@ -147,23 +152,31 @@ def plot_confusion_matrix(cm, class_names, output_path):
         class_names: 类别名称列表
         output_path: 输出图像路径
     """
+    # 设置全局字体大小
+    plt.rcParams.update({'font.size': 12})
+    
     plt.figure(figsize=(12, 10))
     
     # 使用seaborn绘制热力图
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=class_names,
-                yticklabels=class_names)
+                yticklabels=class_names,
+                annot_kws={"size": 10})  # 设置热图中数字的大小
     
-    plt.title('Confusion Matrix', pad=20)
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
+    plt.title('Confusion Matrix', fontsize=16, pad=20)
+    plt.xlabel('Predicted Label', fontsize=14)
+    plt.ylabel('True Label', fontsize=14)
+    
+    # 调整刻度标签大小
+    plt.xticks(fontsize=12, rotation=45)
+    plt.yticks(fontsize=12, rotation=45)
     
     # 调整布局以防止标签被切断
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()
 
-def plot_sample_predictions(images, true_labels, pred_labels, output_path, num_samples=10):
+def plot_sample_predictions(images, true_labels, pred_labels, output_path, num_samples=9):
     """
     可视化样本预测结果
     
@@ -172,15 +185,22 @@ def plot_sample_predictions(images, true_labels, pred_labels, output_path, num_s
         true_labels: 真实标签
         pred_labels: 预测标签
         output_path: 输出图像路径
-        num_samples: 要显示的样本数量
+        num_samples: 要显示的样本数量，默认为9（3x3网格）
     """
-    plt.figure(figsize=(15, 3))
-    for i in range(num_samples):
-        plt.subplot(1, num_samples, i + 1)
-        plt.imshow(images[i].reshape(28, 28), cmap='gray')
-        color = 'green' if true_labels[i] == pred_labels[i] else 'red'
-        plt.title(f'True: {get_fashion_mnist_labels()[true_labels[i]]}\nPred: {get_fashion_mnist_labels()[pred_labels[i]]}',
-                 color=color, fontsize=8)
+    # 设置全局字体大小
+    plt.rcParams.update({'font.size': 12})
+    
+    # 随机选择样本
+    total_samples = len(images)
+    indices = np.random.choice(total_samples, min(num_samples, total_samples), replace=False)
+    
+    plt.figure(figsize=(10, 10))
+    for i, idx in enumerate(indices):
+        plt.subplot(3, 3, i + 1)
+        plt.imshow(images[idx].reshape(28, 28), cmap='gray')
+        color = 'green' if true_labels[idx] == pred_labels[idx] else 'red'
+        plt.title(f'True: {get_fashion_mnist_labels()[true_labels[idx]]}\nPred: {get_fashion_mnist_labels()[pred_labels[idx]]}',
+                 color=color, fontsize=10)  # 增加字体大小到10
         plt.axis('off')
     
     plt.tight_layout()
@@ -195,22 +215,27 @@ def plot_class_distribution(labels, output_path):
         labels: 标签数据
         output_path: 输出图像路径
     """
+    # 设置全局字体大小
+    plt.rcParams.update({'font.size': 12})
+    
     class_names = get_fashion_mnist_labels()
     class_counts = np.bincount(labels)
     
     plt.figure(figsize=(12, 6))
     bars = plt.bar(range(len(class_counts)), class_counts)
-    plt.title('Class Distribution in Dataset')
-    plt.xlabel('Class')
-    plt.ylabel('Number of Samples')
-    plt.xticks(range(len(class_names)), class_names, rotation=45)
+    plt.title('Class Distribution in Dataset', fontsize=16)
+    plt.xlabel('Class', fontsize=14)
+    plt.ylabel('Number of Samples', fontsize=14)
+    plt.xticks(range(len(class_names)), class_names, rotation=45, fontsize=12)
+    plt.yticks(fontsize=12)
     
     # 在柱状图上添加具体数值
     for bar in bars:
         height = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2., height,
                 f'{int(height)}',
-                ha='center', va='bottom')
+                ha='center', va='bottom',
+                fontsize=10)
     
     plt.tight_layout()
     plt.savefig(output_path)
