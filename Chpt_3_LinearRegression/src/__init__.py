@@ -1,18 +1,17 @@
 """
 线性回归项目
-包含从零实现和使用PyTorch API两种实现方式
+使用PyTorch API实现的线性回归
 """
 
 from .data import generate_data
-from .model import create_model, LinearRegressionFromZero, LinearRegressionSimplified
+from .model import create_model, LinearRegression
 from .trainer import Trainer
 from .utils import load_config, set_seed, get_true_params
 
 __all__ = [
     'generate_data',
     'create_model',
-    'LinearRegressionFromZero',
-    'LinearRegressionSimplified',
+    'LinearRegression',
     'Trainer',
     'load_config',
     'set_seed',

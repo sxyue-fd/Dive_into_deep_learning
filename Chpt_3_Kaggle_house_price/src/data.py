@@ -19,12 +19,18 @@ class HousePriceDataset:
         self.config = config
         self.feature_scaler = StandardScaler()
         self.label_scaler = StandardScaler()
-        
+    
     def load_and_preprocess(self):
         """加载并预处理数据"""
+        # 获取项目根目录
+        base_dir = Path(__file__).resolve().parent.parent
+        
         # 加载原始数据
-        train_data = pd.read_csv(self.config['data']['train_file'])
-        test_data = pd.read_csv(self.config['data']['test_file'])
+        train_file = base_dir / self.config['data']['train_file']
+        test_file = base_dir / self.config['data']['test_file']
+        
+        train_data = pd.read_csv(train_file)
+        test_data = pd.read_csv(test_file)
         
         # 提取目标变量和特征
         train_labels = train_data['SalePrice'].values.reshape(-1, 1)
@@ -32,7 +38,8 @@ class HousePriceDataset:
         
         # 标准化标签
         train_labels_scaled = self.label_scaler.fit_transform(train_labels)
-          # 特征预处理
+        
+        # 特征预处理
         features_array = features.values.astype(np.float32)
         
         # 转换为张量
@@ -110,6 +117,10 @@ class HousePriceDataset:
             # 创建完整训练集的加载器
             dataset = TensorDataset(train_features, train_labels)
             return DataLoader(dataset, batch_size=batch_size, shuffle=True)
+            
+    def inverse_transform_labels(self, scaled_labels):
+        """将标准化的标签转换回原始范围"""
+        return self.label_scaler.inverse_transform(scaled_labels)
             
     def inverse_transform_labels(self, scaled_labels):
         """将标准化的标签转换回原始范围"""

@@ -1,23 +1,40 @@
-data:
-  train_file: "data/raw/train.csv"
-  test_file: "data/raw/test.csv"
-  description_file: "data/raw/data_description.txt"
-  submission_file: "data/raw/sample_submission.csv"
-  processed_dir: "data/processed"
+# Kaggle房价预测项目配置文件
+# 所有路径都相对于项目根目录
 
+#-------------------
+# 数据配置
+#-------------------
+data:
+  # 原始数据文件路径
+  train_file: "data/raw/train.csv"           # 训练数据
+  test_file: "data/raw/test.csv"             # 测试数据
+  description_file: "data/raw/data_description.txt"  # 特征说明文件
+  submission_file: "data/raw/sample_submission.csv"  # 提交样例文件
+  # 处理后的数据存储路径
+  processed_dir: "data/processed"             # 预处理后的数据保存目录
+
+#-------------------
+# 模型配置
+#-------------------
 model:
-  input_size: null  # 将在运行时根据数据确定
-  hidden_size: 32
-  dropout_rate: 0.3
-  
+  input_size: null    # 输入特征维度（运行时自动设置）
+  hidden_size: 32     # 隐藏层神经元数量
+  dropout_rate: 0.3   # Dropout比率，用于防止过拟合
+
+#-------------------
+# 训练配置
+#-------------------
 training:
-  batch_size: 64
-  num_epochs: 50
-  learning_rate: 0.001
-  weight_decay: 0.05
-  k_folds: 5
-  
+  batch_size: 64      # 批量大小
+  num_epochs: 50      # 训练轮数
+  learning_rate: 0.001  # 学习率
+  weight_decay: 0.05  # L2正则化系数
+  k_folds: 5         # 交叉验证折数
+
+#-------------------
+# 输出路径配置
+#-------------------
 paths:
-  model_save_dir: "outputs/models"
-  log_dir: "outputs/logs"
-  visualization_dir: "outputs/visualizations"
+  model_save_dir: "outputs/models"          # 模型保存目录
+  log_dir: "outputs/logs"                   # 日志保存目录
+  visualization_dir: "outputs/visualizations"  # 可视化结果保存目录
