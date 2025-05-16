@@ -15,9 +15,9 @@ import torch
 from data import load_fashion_mnist
 from model import create_model
 from trainer import Trainer
-from utils import load_config, set_seed
+from utils import load_config, set_seed, cleanup_logs
 
-def main():    
+def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='Fashion-MNIST Training')
     default_config_path = os.path.join(project_root, 'configs', 'config.yaml')
@@ -26,13 +26,23 @@ def main():
     parser.add_argument('--seed', type=int, default=42,
                       help='random seed')
     args = parser.parse_args()
+
+    # 加载配置文件
+    config = load_config(args.config)
     
     # 设置随机种子
     set_seed(args.seed)
     
-    # 加载配置
-    config = load_config(args.config)
-      # 准备数据
+    # 如果启用了日志清理功能，则清理旧的日志文件
+    if config['logging']['cleanup']['enabled']:
+        logs_dir = os.path.join(project_root, 'outputs', 'logs')
+        cleanup_logs(
+            logs_dir,
+            max_files=config['logging']['cleanup']['max_files'],
+            days_to_keep=config['logging']['cleanup']['days_to_keep']
+        )
+    
+    # 准备数据
     train_loader, test_loader = load_fashion_mnist(config)
     
     # 创建模型

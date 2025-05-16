@@ -137,11 +137,13 @@ class Trainer:
         return epoch_loss, epoch_acc
     
     def evaluate(self, loader):
-        """评估模型"""
+        """评估模型并计算混淆矩阵"""
         self.model.eval()
         total_loss = 0
         correct = 0
         total = 0
+        all_preds = []
+        all_labels = []
         
         with torch.no_grad():
             for data, target in loader:
@@ -152,56 +154,110 @@ class Trainer:
                 pred = output.argmax(dim=1, keepdim=True)
                 correct += pred.eq(target.view_as(pred)).sum().item()
                 total += target.size(0)
+                
+                # 收集预测结果和真实标签用于计算混淆矩阵
+                all_preds.extend(pred.view(-1).cpu().numpy())
+                all_labels.extend(target.cpu().numpy())
+        
+        # 计算混淆矩阵
+        from sklearn.metrics import confusion_matrix
+        self.confusion_matrix = confusion_matrix(all_labels, all_preds)
         
         return total_loss / len(loader), correct / total
     
     def save_training_results(self, test_loss, test_acc):
-        """保存训练结果摘要"""
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        result_file = self.log_dir / f'training_result_{timestamp}.txt'
+        """
+        保存训练结果，包含更详细的统计信息
         
+        Args:
+            test_loss: 测试集损失
+            test_acc: 测试集准确率
+        """
+        # 计算模型大小
+        param_size = 0
+        buffer_size = 0
+        for param in self.model.parameters():
+            param_size += param.nelement() * param.element_size()
+        for buffer in self.model.buffers():
+            buffer_size += buffer.nelement() * buffer.element_size()
+        size_all_mb = (param_size + buffer_size) / 1024**2
+        
+        # 计算总参数量
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        
+        # 计算训练用时
+        training_time = time.time() - self.training_start_time
+        hours = int(training_time // 3600)
+        minutes = int((training_time % 3600) // 60)
+        seconds = int(training_time % 60)
+        
+        result_file = os.path.join(self.log_dir, f'training_result_{self.timestamp}.txt')
         with open(result_file, 'w', encoding='utf-8') as f:
-            f.write(f"{'='*50}\n")
+            # 写入标题和时间戳
+            f.write("="*50 + "\n")
             f.write("训练结果摘要\n")
-            f.write(f"训练时间: {timestamp}\n")
-            f.write(f"{'='*50}\n\n")
+            f.write(f"训练时间: {self.timestamp}\n")
+            f.write("="*50 + "\n\n")
             
-            # 写入模型配置
-            f.write("模型配置:\n")
+            # 写入模型信息
+            f.write("模型信息:\n")
             f.write(f"- 类型: {self.config['model']['type']}\n")
             f.write(f"- 隐藏层: {self.config['model']['hidden_units']}\n")
-            f.write(f"- Dropout率: {self.config['model']['dropout_rate']}\n\n")
+            f.write(f"- Dropout率: {self.config['model']['dropout_rate']}\n")
+            f.write(f"- 模型大小: {size_all_mb:.2f} MB\n")
+            f.write(f"- 总参数量: {total_params:,}\n")
+            f.write(f"- 可训练参数: {trainable_params:,}\n\n")
             
             # 写入训练配置
             f.write("训练配置:\n")
             f.write(f"- 训练轮次: {self.config['training']['num_epochs']}\n")
             f.write(f"- 学习率: {self.config['training']['learning_rate']}\n")
             f.write(f"- Weight Decay: {self.config['training']['weight_decay']}\n")
-            f.write(f"- 设备: {self.config['training']['device']}\n\n")
+            f.write(f"- 设备: {self.config['training']['device']}\n")
+            f.write(f"- 训练用时: {hours}小时 {minutes}分钟 {seconds}秒\n\n")
             
-            # 写入训练过程数据
+            # 写入数据配置
+            f.write("数据配置:\n")
+            f.write(f"- 训练集大小: {self.config['data']['train_size']} 样本\n")
+            f.write(f"- 测试集大小: {self.config['data']['test_size']} 样本\n")
+            f.write(f"- 批次大小: {self.config['data']['batch_size']} 样本\n")
+            f.write(f"- 输入维度: {self.config['data']['input_size']}\n")
+            f.write(f"- 类别数量: {self.config['data']['num_classes']}\n\n")
+            
+            # 写入训练过程
             f.write("训练过程:\n")
             f.write(f"- 最终训练损失: {self.train_losses[-1]:.4f}\n")
-            f.write(f"- 最终训练准确率: {self.train_accs[-1]*100:.2f}%\n\n")            # 写入测试结果
-            f.write("\n测试结果:\n")
-            # 修复格式化字符串错误：确保值不是None再进行格式化
-            if test_loss is not None:
-                f.write(f"- 测试损失: {test_loss:.4f}\n")
-            else:
-                f.write("- 测试损失: N/A\n")
-                
-            if test_acc is not None:
-                f.write(f"- 测试准确率: {test_acc*100:.2f}%\n")
-            else:
-                f.write("- 测试准确率: N/A\n")
+            f.write(f"- 最终训练准确率: {self.train_accs[-1]*100:.2f}%\n\n")
             
-            logging.info(f"训练结果已保存至: {result_file}")
+            # 写入测试结果
+            f.write("测试结果:\n")
+            f.write(f"- 测试损失: {test_loss:.4f}\n")
+            f.write(f"- 测试准确率: {test_acc*100:.2f}%\n")
+            f.write("注：详细的类别性能指标请参考confusion_matrix.png\n\n")
+            
+            # 记录可能的改进建议
+            if test_acc < self.train_accs[-1] * 0.9:  # 如果测试准确率明显低于训练准确率
+                f.write("\n改进建议:\n")
+                f.write("- 模型可能存在过拟合，考虑增加正则化强度或减少模型复杂度\n")
+                f.write("- 可以尝试增加dropout率或减少隐藏层维度\n")
+            elif test_acc < 0.8:  # 如果测试准确率不够理想
+                f.write("\n改进建议:\n")
+                f.write("- 考虑增加训练轮数\n")
+                f.write("- 可以尝试调整学习率或使用学习率衰减\n")
+                f.write("- 考虑增加模型复杂度\n")
+        logging.info(f"训练结果已保存至: {result_file}")
+        return result_file
+        
     def train(self, train_loader):
         """训练模型"""
         num_epochs = self.config['training']['num_epochs']
         
+        # 记录训练开始时间
+        self.training_start_time = time.time()
+        
         # 初始化实时可视化
-        plt.ion()  # 开启交互模式
+        plt.ion()
         
         # 创建实时训练曲线图形
         self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(10, 10))
@@ -214,11 +270,11 @@ class Trainer:
         for epoch in range(num_epochs):
             logging.info(f'\n{"="*20} Epoch {epoch+1}/{num_epochs} {"="*20}')
             
-            # 训练
+            # 训练一个epoch
             train_loss, train_acc = self.train_epoch(train_loader)
             
             # 更新实时训练曲线
-            if len(self.train_losses) > 0:  # 只在有数据时更新
+            if len(self.train_losses) > 0:
                 self._update_training_plot()
             
             # 输出训练指标摘要
@@ -228,11 +284,11 @@ class Trainer:
             if (epoch + 1) % 5 == 0:
                 self.save_model(f'checkpoint_{epoch+1}.pth')
                 logging.info(f'已保存检查点: checkpoint_{epoch+1}.pth')
-
+            
             # 最后一个epoch保存为最佳模型
             if epoch == num_epochs - 1:
                 self.save_model('best.pth')
-                logging.info(f'已保存最终模型为best.pth')
+                logging.info('已保存最终模型为best.pth')
         
         plt.ioff()  # 关闭交互模式
         plt.close(self.fig)  # 关闭实时训练图形
@@ -243,8 +299,7 @@ class Trainer:
         # 加载最佳模型用于保存结果
         self.load_model('best.pth')
         
-        # 暂时不保存测试结果，因为测试集应该在完整训练结束后才使用一次
-        self.save_training_results(None, None)
+        # 记录训练完成
         logging.info("训练完成。请使用测试集进行最终评估。")
     
     def save_model(self, filename):

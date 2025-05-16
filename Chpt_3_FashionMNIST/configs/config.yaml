@@ -11,13 +11,14 @@ data:
 
 # 模型配置
 model:
-  type: "mlp"             # [可修改] 可选"softmax"或"mlp"，建议使用"mlp"获得更好性能
-  hidden_units: [256] # [可修改] 可调整层数和每层单元数，需要权衡计算资源和模型性能
-  dropout_rate: 0.5       # [可修改] 建议范围0.2-0.5，过大可能影响训练效果
+  type: "mlp"             # [可修改] 可选"softmax"或"mlp"
+  # 以下参数仅在type="mlp"时有效：
+  hidden_units: [256]         # MLP专用：隐藏层维度，如[256]表示单隐藏层，[256,128]表示双隐藏层
+  dropout_rate: 0.2           # MLP专用：Dropout比率，建议范围0.2-0.5
 
 # 训练配置
 training:
-  num_epochs: 5           # [可修改] 建议范围5-50，根据训练收敛情况调整
+  num_epochs: 10           # [可修改] 建议范围5-50，根据训练收敛情况调整
   learning_rate: 0.1      # [可修改] 建议范围0.001-0.1，可根据训练情况调整
   weight_decay: 1e-4      # [可修改] 建议范围1e-5到1e-3，用于控制模型正则化
   device: "cuda"          # [可修改] 根据实际硬件选择"cuda"或"cpu"
@@ -27,4 +28,8 @@ training:
 
 # 日志配置
 logging:
-  log_interval: 100       # [可修改] 每隔多少个batch打印一次日志，建议范围10-500
+  log_interval: 50       # [可修改] 每隔多少个batch打印一次日志，建议范围10-500
+  cleanup:
+    max_files: 10        # [可修改] 保留的最大日志文件数量
+    days_to_keep: 7      # [可修改] 保留最近几天的日志文件
+    enabled: true        # [可修改] 是否启用日志清理功能

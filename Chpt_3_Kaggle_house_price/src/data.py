@@ -8,7 +8,6 @@ from pathlib import Path
 
 class HousePriceDataset:
     """房价预测数据集处理类"""
-    
     def __init__(self, config):
         """
         初始化数据集处理器
@@ -19,6 +18,17 @@ class HousePriceDataset:
         self.config = config
         self.feature_scaler = StandardScaler()
         self.label_scaler = StandardScaler()
+        self.numerical_features = []
+        self.categorical_features = []
+        self.original_feature_dim = 0
+        
+        # 获取项目根目录
+        base_dir = Path(__file__).resolve().parent.parent
+        
+        # 设置数据文件路径
+        self.train_file = base_dir / config['data']['train_file']
+        self.test_file = base_dir / config['data']['test_file']
+        self.processed_dir = base_dir / config['data']['processed_dir']
     
     def load_and_preprocess(self):
         """加载并预处理数据"""
@@ -50,21 +60,31 @@ class HousePriceDataset:
         return train_features, train_labels, test_features
     
     def _process_features(self, train_data, test_data):
-        """特征处理"""
-        # 合并训练集和测试集以进行一致的特征处理
-        all_features = pd.concat([
-            train_data.drop(['SalePrice', 'Id'], axis=1),
-            test_data.drop(['Id'], axis=1)
-        ])
+        """处理特征
         
-        # 区分数值特征和分类特征
-        numeric_features = all_features.select_dtypes(
-            include=['int64', 'float64']).columns
-        categorical_features = all_features.select_dtypes(
-            include=['object']).columns
+        Args:
+            train_data (pd.DataFrame): 训练数据
+            test_data (pd.DataFrame): 测试数据
             
+        Returns:
+            pd.DataFrame: 处理后的特征
+        """
+        # 合并训练集和测试集以进行特征处理
+        all_features = pd.concat([train_data.drop(['SalePrice'], axis=1), test_data])
+        
+        # 记录原始特征维度
+        self.original_feature_dim = all_features.shape[1]
+        
+        # 识别数值和类别特征
+        self.numerical_features = all_features.select_dtypes(
+            include=['int64', 'float64']
+        ).columns.tolist()
+        self.categorical_features = all_features.select_dtypes(
+            include=['object']
+        ).columns.tolist()
+        
         # 处理数值特征
-        for feature in numeric_features:
+        for feature in self.numerical_features:
             # 使用中位数填充缺失值
             median_val = all_features[feature].median()
             all_features[feature] = all_features[feature].fillna(median_val)
@@ -74,14 +94,14 @@ class HousePriceDataset:
             all_features[feature] = (all_features[feature] - mean_val) / std_val
             
         # 处理分类特征
-        for feature in categorical_features:
+        for feature in self.categorical_features:
             most_frequent = all_features[feature].mode()[0]
             all_features[feature] = all_features[feature].fillna(most_frequent)
             
         # 独热编码
         all_features = pd.get_dummies(
             all_features, 
-            columns=categorical_features,
+            columns=self.categorical_features,
             dummy_na=False,
             drop_first=False
         )
@@ -117,10 +137,6 @@ class HousePriceDataset:
             # 创建完整训练集的加载器
             dataset = TensorDataset(train_features, train_labels)
             return DataLoader(dataset, batch_size=batch_size, shuffle=True)
-            
-    def inverse_transform_labels(self, scaled_labels):
-        """将标准化的标签转换回原始范围"""
-        return self.label_scaler.inverse_transform(scaled_labels)
             
     def inverse_transform_labels(self, scaled_labels):
         """将标准化的标签转换回原始范围"""

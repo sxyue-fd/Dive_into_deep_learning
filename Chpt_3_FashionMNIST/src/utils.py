@@ -5,11 +5,29 @@ import yaml
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import os
+import time
+from pathlib import Path
+from datetime import datetime, timedelta
+import glob
+
 try:
     from .data import get_fashion_mnist_labels
 except ImportError:
     # 当直接运行此模块时使用
     from data import get_fashion_mnist_labels
+
+def set_plot_style():
+    """设置全局绘图样式"""
+    plt.rcParams.update({
+        'font.size': 18,          # 基础字体大小
+        'axes.titlesize': 20,     # 子图标题大小
+        'axes.labelsize': 18,     # 轴标签大小
+        'xtick.labelsize': 16,    # x轴刻度标签大小
+        'ytick.labelsize': 16,    # y轴刻度标签大小
+        'legend.fontsize': 16,    # 图例字体大小
+        'figure.titlesize': 22    # 图表标题大小
+    })
 
 def show_fashion_mnist(images, labels):
     """
@@ -114,8 +132,7 @@ def plot_training_curves(train_losses, valid_losses, train_accs, valid_accs, ste
         steps_per_point: 每个数据点之间的batch数
         output_path: 输出图像的路径
     """
-    # 设置全局字体大小
-    plt.rcParams.update({'font.size': 12})
+    set_plot_style()
     
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
     
@@ -152,8 +169,7 @@ def plot_confusion_matrix(cm, class_names, output_path):
         class_names: 类别名称列表
         output_path: 输出图像路径
     """
-    # 设置全局字体大小
-    plt.rcParams.update({'font.size': 12})
+    set_plot_style()
     
     plt.figure(figsize=(12, 10))
     
@@ -187,8 +203,10 @@ def plot_sample_predictions(images, true_labels, pred_labels, output_path, num_s
         output_path: 输出图像路径
         num_samples: 要显示的样本数量，默认为9（3x3网格）
     """
-    # 设置全局字体大小
-    plt.rcParams.update({'font.size': 12})
+    set_plot_style()
+    
+    # 使用当前时间戳作为随机种子
+    np.random.seed(int(time.time()))
     
     # 随机选择样本
     total_samples = len(images)
@@ -215,8 +233,7 @@ def plot_class_distribution(labels, output_path):
         labels: 标签数据
         output_path: 输出图像路径
     """
-    # 设置全局字体大小
-    plt.rcParams.update({'font.size': 12})
+    set_plot_style()
     
     class_names = get_fashion_mnist_labels()
     class_counts = np.bincount(labels)
@@ -279,11 +296,11 @@ def plot_training_progress(epoch, train_losses, train_accs, valid_losses=None, v
         valid_accs: 验证准确率列表，可选
         eval_interval: 评估间隔
         output_path: 输出图像路径
-    """
-    fig = plt.figure(figsize=(15, 10))
+    """    # 增加图形大小并添加更多间距
+    fig = plt.figure(figsize=(16, 12))
     
-    # 创建网格布局
-    gs = plt.GridSpec(2, 2, figure=fig)
+    # 创建网格布局，添加水平和垂直间距
+    gs = plt.GridSpec(2, 2, figure=fig, hspace=0.3, wspace=0.3)
     
     # 损失曲线（左上）
     ax1 = fig.add_subplot(gs[0, 0])
@@ -357,10 +374,56 @@ def plot_training_progress(epoch, train_losses, train_accs, valid_losses=None, v
     table.auto_set_font_size(False)
     table.set_fontsize(9)
     table.scale(1.2, 1.5)
-    
-    plt.tight_layout()
+      # 调整子图之间的间距和边距
+    plt.subplots_adjust(
+        left=0.1,    # 左边距
+        right=0.9,   # 右边距
+        bottom=0.1,  # 下边距
+        top=0.9,     # 上边距
+        wspace=0.3,  # 子图之间的水平间距
+        hspace=0.3   # 子图之间的垂直间距
+    )
     
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.pause(0.1)
     plt.close()
+
+def cleanup_logs(log_dir, max_files=10, days_to_keep=7):
+    """
+    清理日志文件，保持日志目录整洁
+    
+    Args:
+        log_dir: 日志目录路径
+        max_files: 保留的最大文件数量
+        days_to_keep: 保留最近几天的日志
+    """
+    # 确保日志目录存在
+    if not os.path.exists(log_dir):
+        return
+        
+    # 获取所有日志文件
+    log_files = []
+    for ext in ['*.log', '*.txt']:
+        log_files.extend(glob.glob(os.path.join(log_dir, ext)))
+    
+    if not log_files:
+        return
+        
+    # 按修改时间排序
+    log_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    
+    # 获取当前时间
+    now = datetime.now()
+    
+    # 遍历所有日志文件
+    for i, file_path in enumerate(log_files):
+        file_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+        
+        # 如果文件数量超过最大限制或文件太旧，则删除
+        if i >= max_files or (now - file_time).days > days_to_keep:
+            try:
+                os.remove(file_path)
+                print(f"已删除旧日志文件: {os.path.basename(file_path)}")
+            except OSError as e:
+                print(f"删除文件失败 {file_path}: {e}")

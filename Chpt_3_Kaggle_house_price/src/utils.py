@@ -5,6 +5,8 @@ import torch
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
+import re
 
 def setup_seed(seed=42):
     """设置随机种子以确保可重现性"""
@@ -36,50 +38,142 @@ def get_absolute_path(relative_path):
     """将相对路径转换为绝对路径"""
     return get_project_root() / relative_path
 
-def save_training_results(config, fold_results, output_file):
+def cleanup_old_logs(log_dir, max_logs):
+    """清理旧的日志文件，只保留最新的n个文件
+    
+    Args:
+        log_dir: 日志目录路径
+        max_logs: 保留的最大日志文件数
     """
-    保存训练结果
+    # 获取所有日志文件
+    log_files = []
+    result_files = []
+    
+    for file in log_dir.glob("*.log"):
+        log_files.append(file)
+    for file in log_dir.glob("training_result_*.txt"):
+        result_files.append(file)
+    
+    # 按修改时间排序
+    log_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    result_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    
+    # 删除旧文件
+    if len(log_files) > max_logs:
+        for file in log_files[max_logs:]:
+            file.unlink()
+    
+    if len(result_files) > max_logs:
+        for file in result_files[max_logs:]:
+            file.unlink()
+
+def setup_logging(config, session_id):
+    """配置日志系统
+    
+    Args:
+        config: 配置字典
+        session_id: 训练会话ID
+    """
+    log_dir = get_absolute_path(config['paths']['log_dir'])
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 清理旧日志文件
+    cleanup_old_logs(log_dir, config['logging']['max_kept_logs'])
+    
+    # 设置日志文件路径
+    log_file = log_dir / f"training_{session_id}.log"
+    
+    # 配置日志格式
+    logging.basicConfig(
+        level=getattr(logging, config['logging']['log_level']),
+        format=config['logging']['format'],
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    return log_file
+
+def get_session_id():
+    """生成唯一的训练会话ID"""
+    return datetime.now().strftime('%Y%m%d_%H%M%S')
+
+def save_training_results(config, fold_results, session_id, dataset_info=None):
+    """
+    保存训练结果到详细的记录文件（TXT格式）
     
     Args:
         config: 训练配置
         fold_results: 每个fold的训练结果
-        output_file: 输出文件路径（相对于项目根目录）
+        session_id: 训练会话ID
+        dataset_info: 数据集信息字典，包含：
+            - total_samples: 总样本数
+            - train_samples: 训练集样本数
+            - val_samples: 验证集样本数
+            - original_features: 原始特征维度
+            - processed_features: 处理后的特征维度
+            - numerical_features: 数值特征数量
+            - categorical_features: 类别特征数量
     """
+    log_dir = get_absolute_path(config['paths']['log_dir'])
+    output_file = log_dir / f"training_result_{session_id}.txt"
+    precision = config['logging']['metrics_precision']  # 获取指标精度配置
+    
+    # 计算平均和最佳结果
     avg_train_mse = np.mean([res['train_loss'] for res in fold_results])
     avg_val_mse = np.mean([res['val_loss'] for res in fold_results])
     best_fold_idx = np.argmin([res['val_loss'] for res in fold_results])
     best_val_loss = fold_results[best_fold_idx]['val_loss']
-      # 确保输出目录存在
-    output_path = get_absolute_path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    with open(output_path, 'a', encoding='utf-8') as f:
-        f.write(f"\n{'='*50}\n")
-        f.write(f"训练时间: {config['timestamp']}\n")
-        f.write(f"{'='*50}\n")
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write("="*50 + "\n")
+        f.write(f"训练时间: {session_id}\n")
+        f.write("="*50 + "\n")
+        
+        # 写入数据集信息
+        f.write("数据集信息:\n")
+        f.write("-"*50 + "\n")
+        if dataset_info:
+            f.write(f"总样本数: {dataset_info['total_samples']}\n")
+            f.write(f"训练集大小: {dataset_info['train_samples']} ({dataset_info['train_samples']/dataset_info['total_samples']*100:.1f}%)\n")
+            f.write(f"验证集大小: {dataset_info['val_samples']} ({dataset_info['val_samples']/dataset_info['total_samples']*100:.1f}%)\n")
+            f.write("\n特征信息:\n")
+            f.write(f"原始特征维度: {dataset_info['original_features']}\n")
+            f.write(f"处理后特征维度: {dataset_info['processed_features']}\n")
+            f.write(f"- 数值特征: {dataset_info['numerical_features']}\n")
+            f.write(f"- 类别特征: {dataset_info['categorical_features']}\n")
+        f.write("\n文件路径:\n")
+        f.write(f"训练数据: {config['data']['train_file']}\n")
+        f.write(f"测试数据: {config['data']['test_file']}\n")
+        f.write("\n")
         
         # 写入超参数配置
         f.write("超参数配置:\n")
-        for key, value in config['model'].items():
-            f.write(f"- {key}: {value}\n")
-        for key, value in config['training'].items():
-            f.write(f"- {key}: {value}\n")
+        f.write("-"*50 + "\n")
+        for key in ['input_size', 'hidden_size', 'dropout_rate']:
+            f.write(f"- {key}: {config['model'][key]}\n")
+        for key in ['batch_size', 'num_epochs', 'learning_rate', 'weight_decay', 'k_folds']:
+            f.write(f"- {key}: {config['training'][key]}\n")
+        f.write("\n")
         
-        # 写入训练结果
-        f.write("\n训练结果:\n")
-        f.write(f"- 平均训练MSE: {avg_train_mse:.4f}\n")
-        f.write(f"- 平均验证MSE: {avg_val_mse:.4f}\n")
-        f.write(f"- 最佳验证MSE (Fold {best_fold_idx + 1}): {best_val_loss:.4f}\n")
+        # 写入训练结果摘要
+        f.write("训练结果:\n")
+        f.write("-"*50 + "\n")
+        f.write(f"平均训练MSE: {avg_train_mse:.{precision}f}\n")
+        f.write(f"平均验证MSE: {avg_val_mse:.{precision}f}\n")
+        f.write(f"最佳验证MSE (Fold {best_fold_idx + 1}): {best_val_loss:.{precision}f}\n\n")
         
-        # 写入每折的详细结果
-        f.write("\n各折详细结果:\n")
-        f.write(f"{'折数':^6} {'训练MSE':^12} {'验证MSE':^12}\n")
-        f.write("-" * 32 + "\n")
-        
+        # 写入每折详细结果
+        f.write("各折详细结果:\n")
+        f.write("-"*50 + "\n")
+        f.write(f"{'折数':<8} {'训练MSE':<12} {'验证MSE':<8}\n")
+        f.write("-"*32 + "\n")
         for i, res in enumerate(fold_results):
-            f.write(f"{i+1:^6d} {res['train_loss']:^12.4f} {res['val_loss']:^12.4f}\n")
-        
-        f.write("-" * 32 + "\n\n")
+            f.write(f"{i+1:<8} {res['train_loss']:.{precision}f}      {res['val_loss']:.{precision}f}\n")
+        f.write("-"*32 + "\n\n")
+    
+    logging.info(f"训练结果已保存到 {output_file}")
+    return output_file
 
 def plot_training_progress(train_epochs, train_losses, val_losses, current_train_loss, fold, output_path):
     """

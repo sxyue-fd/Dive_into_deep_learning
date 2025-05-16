@@ -18,15 +18,15 @@ data:
 #-------------------
 model:
   input_size: null    # 输入特征维度（运行时自动设置）
-  hidden_size: 32     # 隐藏层神经元数量
+  hidden_size: 64     # 隐藏层神经元数量
   dropout_rate: 0.3   # Dropout比率，用于防止过拟合
 
 #-------------------
 # 训练配置
 #-------------------
 training:
-  batch_size: 64      # 批量大小
-  num_epochs: 50      # 训练轮数
+  batch_size: 128      # 批量大小
+  num_epochs: 30      # 训练轮数
   learning_rate: 0.001  # 学习率
   weight_decay: 0.05  # L2正则化系数
   k_folds: 5         # 交叉验证折数
@@ -38,3 +38,13 @@ paths:
   model_save_dir: "outputs/models"          # 模型保存目录
   log_dir: "outputs/logs"                   # 日志保存目录
   visualization_dir: "outputs/visualizations"  # 可视化结果保存目录
+
+#-------------------
+# 日志配置
+#-------------------
+logging:
+  max_kept_logs: 10            # 保留的最大日志文件数量
+  log_level: "INFO"           # 日志级别：DEBUG/INFO/WARNING/ERROR/CRITICAL
+  format: "%(asctime)s - %(levelname)s - %(message)s"  # 日志格式
+  result_format: "txt"        # 训练结果保存格式（txt）
+  metrics_precision: 4        # 指标保留小数位数
