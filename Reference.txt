@@ -1,2 +1,0 @@
-https://github.com/ShusenTang/Dive-into-DL-PyTorch
-https://tangshusen.me/Dive-into-DL-PyTorch/#/

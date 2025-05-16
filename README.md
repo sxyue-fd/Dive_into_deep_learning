@@ -78,18 +78,28 @@ pip install -r requirements.txt
    - 项目基于此教材的实践内容
    - [教材链接](https://d2l.ai/)
 
-2. PyTorch官方文档
+2. 《动手学深度学习》PyTorch实现
+   - [GitHub实现](https://github.com/ShusenTang/Dive-into-DL-PyTorch)
+   - [在线版本](https://tangshusen.me/Dive-into-DL-PyTorch/#/)
+
+3. PyTorch官方文档
    - [pytorch.org](https://pytorch.org/docs/stable/index.html)
 
-3. Fashion-MNIST数据集
+4. Fashion-MNIST数据集
    - [github.com/zalandoresearch/fashion-mnist](https://github.com/zalandoresearch/fashion-mnist)
 
-4. Kaggle房价预测竞赛
+5. Kaggle房价预测竞赛
    - [kaggle.com/c/house-prices-advanced-regression-techniques](https://www.kaggle.com/c/house-prices-advanced-regression-techniques)
 
 ## 许可证
 
-本项目遵循[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)许可协议。
+本项目采用 MIT License 进行许可。有关详细信息，请参阅 [LICENSE](LICENSE) 文件。
+
+## 版权声明
+
+Copyright (c) 2025
+
+本项目中的所有代码均基于 MIT License 发布。详细信息请参阅各子项目目录中的 LICENSE 文件。
 
 ## 贡献
 

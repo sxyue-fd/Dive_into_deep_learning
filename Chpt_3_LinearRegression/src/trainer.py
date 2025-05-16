@@ -1,4 +1,9 @@
 ﻿"""
+Copyright (c) 2025
+此项目基于 MIT License 进行许可
+有关详细信息，请参阅项目根目录中的 LICENSE 文件
+"""
+"""
 训练和评估模块
 """
 import os

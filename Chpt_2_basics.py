@@ -1,4 +1,9 @@
 """
+Copyright (c) 2025
+此项目基于 MIT License 进行许可
+有关详细信息，请参阅项目根目录中的 LICENSE 文件
+"""
+"""
 这是一个PyTorch基础操作的演示代码。主要包含以下几个部分:
 1. Tensor的创建
 - 演示了使用empty(), rand(), zeros(), tensor()等方法创建张量
