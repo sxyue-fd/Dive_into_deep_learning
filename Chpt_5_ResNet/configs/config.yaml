@@ -1,0 +1,117 @@
+# ResNet18 CIFAR-10 配置文件
+
+# 数据设置
+data:
+  dataset: "cifar10"
+  data_root: "./data/raw"  # 修正数据存储路径到正确的raw目录
+  batch_size: 128
+  num_workers: 4
+  pin_memory: true
+  
+  # 数据增强参数
+  transforms:
+    train:
+      random_horizontal_flip: 0.5
+      random_crop:
+        size: 32
+        padding: 4
+    normalize:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+  
+  # 数据分割
+  validation_split: 0.2
+  shuffle: true
+  random_seed: 42
+
+# 模型设置
+model:
+  name: "resnet18"
+  num_classes: 10
+  input_channels: 3
+  
+  # ResNet18架构参数
+  resnet:
+    block_type: "basic"
+    layers: [2, 2, 2, 2]  # ResNet18的层数配置
+    initial_channels: 64
+    use_pretrained: false  # 禁止使用预训练模型
+
+# 训练设置
+training:
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 1e-4
+  momentum: 0.9
+  
+  # 优化器
+  optimizer: "adam"
+  optimizer_params:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+  
+  # 学习率调度
+  scheduler: "cosine"
+  scheduler_params:
+    T_max: 100
+    eta_min: 1e-6
+  
+  # 早停机制
+  early_stopping:
+    patience: 10
+    min_delta: 1e-4
+    monitor: "val_loss"
+    mode: "min"
+
+# 验证设置
+validation:
+  frequency: 1  # 每个epoch验证一次
+  metrics: ["accuracy", "top5_accuracy", "loss"]
+
+# 保存设置
+checkpoint:
+  save_frequency: 10  # 每10个epoch保存一次
+  save_best: true
+  save_last: true
+  monitor: "val_accuracy"
+  mode: "max"
+
+# 日志设置
+logging:
+  level: "INFO"
+  save_logs: true
+  log_frequency: 100  # 每100个batch记录一次
+
+# 可视化设置
+visualization:
+  save_training_curves: true
+  save_confusion_matrix: true
+  save_sample_predictions: true
+  save_feature_maps: true
+  save_activation_heatmaps: true
+  save_data_augmentation_examples: true
+  
+  # 可视化参数
+  sample_size: 16  # 预测示例数量
+  feature_map_layers: ["layer1.0.conv1", "layer2.0.conv1", "layer3.0.conv1", "layer4.0.conv1"]
+
+# 性能基准
+performance:
+  target_train_accuracy: 0.90
+  target_val_accuracy: 0.85
+  max_epoch_time_minutes: 5
+
+# 设备设置
+device:
+  use_cuda: true
+  cuda_device: 0
+  mixed_precision: true
+
+# 随机种子
+random_seed: 42
+
+# 输出路径
+paths:
+  logs: "./outputs/logs"
+  models: "./outputs/models"
+  visualizations: "./outputs/visualizations"

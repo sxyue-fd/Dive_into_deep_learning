@@ -1,17 +1,19 @@
 # 深度学习实践项目
 
-本项目是《动手学深度学习》(Dive into Deep Learning) 教材的实践项目集合。
+本项目是《动手学深度学习》(Dive into Deep Learning) 教材的实践项目集合，为作者本人学习使用，与原教材有较大出入。
 
 ## 项目结构
 
-```
+```text
 Dive_into_deep_learning/
-├── Chpt_3_FashionMNIST/      # Fashion-MNIST分类项目
+├── Chpt_3_FashionMNIST/       # Fashion-MNIST分类项目
 │   ├── 使用Softmax回归和MLP的实现
 ├── Chpt_3_LinearRegression/   # 线性回归项目
 │   ├── 从零实现和简化实现
 ├── Chpt_3_Kaggle_house_price/ # Kaggle房价预测项目
 │   └── 完整的机器学习工作流程
+├── Chpt_5_ResNet/             # CIFAR-10图像分类
+│   └── 残差神经网络的完整项目
 ```
 
 ## 项目特点
@@ -24,7 +26,7 @@ Dive_into_deep_learning/
 
 ## 环境要求
 
-```
+```requirements
 torch>=1.9.0
 pandas>=1.3.0
 numpy>=1.19.0
@@ -36,17 +38,20 @@ pyyaml>=5.4.0
 ## 快速开始
 
 1. 克隆项目：
-```bash
+
+```shell
 git clone <repository-url>
 cd Dive_into_deep_learning
 ```
 
 2. 安装依赖：
-```bash
+
+```shell
 pip install -r requirements.txt
 ```
 
 3. 运行子项目：
+
 - 每个子项目都有自己的README.md，包含详细说明
 
 ## 子项目说明
