@@ -42,16 +42,18 @@ class EarlyStopping:
     
     def __init__(self, patience: int = 10, min_delta: float = 1e-4, mode: str = 'min'):
         self.patience = patience
-        self.min_delta = min_delta
+        self.min_delta = float(min_delta)  # 确保 min_delta 是浮点数
         self.mode = mode
         self.counter = 0
         self.best_score = None
         self.early_stop = False
         
         if mode == 'min':
-            self.is_better = lambda score, best: score < best - min_delta
+            # 使用 self.min_delta 而不是闭包中的 min_delta
+            self.is_better = lambda score, best: score < best - self.min_delta
         else:
-            self.is_better = lambda score, best: score > best + min_delta
+            # 使用 self.min_delta 而不是闭包中的 min_delta
+            self.is_better = lambda score, best: score > best + self.min_delta
     
     def __call__(self, score: float):
         if self.best_score is None:
@@ -134,14 +136,15 @@ def calculate_accuracy(output: torch.Tensor, target: torch.Tensor,
 
 
 def save_checkpoint(state: Dict, is_best: bool, checkpoint_dir: str, 
-                   filename: str = 'checkpoint.pth'):
-    """保存模型检查点
+                   filename: str = 'checkpoint.pth', max_checkpoints: int = 5):
+    """保存模型检查点并管理文件数量
     
     Args:
         state: 要保存的状态字典
         is_best: 是否为最佳模型
         checkpoint_dir: 保存目录
         filename: 文件名
+        max_checkpoints: 保留的最大检查点数量（不包括best.pth）
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
     
@@ -153,11 +156,52 @@ def save_checkpoint(state: Dict, is_best: bool, checkpoint_dir: str,
     if is_best:
         best_path = os.path.join(checkpoint_dir, 'best.pth')
         torch.save(state, best_path)
+    
+    # 清理旧的检查点文件（保留最新的几个）
+    clean_old_checkpoints(checkpoint_dir, max_checkpoints)
+
+
+def clean_old_checkpoints(checkpoint_dir: str, max_checkpoints: int = 5):
+    """清理旧的检查点文件，保留最新的几个
+    
+    Args:
+        checkpoint_dir: 检查点目录
+        max_checkpoints: 保留的最大检查点数量
+    """
+    try:
+        # 获取所有检查点文件
+        checkpoint_files = []
+        for file in os.listdir(checkpoint_dir):
+            if file.startswith('checkpoint_') and file.endswith('.pth'):
+                file_path = os.path.join(checkpoint_dir, file)
+                # 从文件名提取epoch号
+                try:
+                    epoch_num = int(file.replace('checkpoint_', '').replace('.pth', ''))
+                    mtime = os.path.getmtime(file_path)
+                    checkpoint_files.append((file_path, epoch_num, mtime))
+                except ValueError:
+                    continue
+        
+        # 按epoch号排序（最新的在前）
+        checkpoint_files.sort(key=lambda x: x[1], reverse=True)
+        
+        # 删除超出数量限制的文件
+        if len(checkpoint_files) > max_checkpoints:
+            for file_path, epoch_num, _ in checkpoint_files[max_checkpoints:]:
+                try:
+                    os.remove(file_path)
+                    print(f"已删除旧检查点: {os.path.basename(file_path)}")
+                except OSError as e:
+                    print(f"删除检查点失败 {file_path}: {e}")
+                    
+    except Exception as e:
+        print(f"清理检查点文件时出错: {e}")
 
 
 def load_checkpoint(checkpoint_path: str, model: torch.nn.Module, 
                    optimizer: Optional[torch.optim.Optimizer] = None,
-                   scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None) -> Dict:
+                   scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+                   device: Optional[torch.device] = None) -> Dict:
     """加载模型检查点
     
     Args:
@@ -165,13 +209,21 @@ def load_checkpoint(checkpoint_path: str, model: torch.nn.Module,
         model: 模型
         optimizer: 优化器（可选）
         scheduler: 调度器（可选）
+        device: 设备（可选）
         
     Returns:
         检查点字典
     """
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    # 根据设备加载检查点
+    if device is None:
+        device = next(model.parameters()).device
+    
+    checkpoint = torch.load(checkpoint_path, map_location=device)
     
     model.load_state_dict(checkpoint['model_state_dict'])
+    
+    # 确保模型在正确的设备上
+    model.to(device)
     
     if optimizer and 'optimizer_state_dict' in checkpoint:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -189,39 +241,43 @@ def plot_training_curves(history: Dict, save_path: str):
         history: 训练历史
         save_path: 保存路径
     """
+    # 设置中文字体支持
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'SimHei', 'Arial Unicode MS']
+    plt.rcParams['axes.unicode_minus'] = False
+    
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     
     epochs = history['epoch']
     
     # 损失曲线
-    axes[0, 0].plot(epochs, history['train_loss'], label='训练损失', color='blue')
-    axes[0, 0].plot(epochs, history['val_loss'], label='验证损失', color='red')
-    axes[0, 0].set_title('损失曲线')
+    axes[0, 0].plot(epochs, history['train_loss'], label='Training Loss', color='blue')
+    axes[0, 0].plot(epochs, history['val_loss'], label='Validation Loss', color='red')
+    axes[0, 0].set_title('Loss Curves')
     axes[0, 0].set_xlabel('Epoch')
     axes[0, 0].set_ylabel('Loss')
     axes[0, 0].legend()
     axes[0, 0].grid(True)
     
     # 准确率曲线
-    axes[0, 1].plot(epochs, history['train_acc'], label='训练准确率', color='blue')
-    axes[0, 1].plot(epochs, history['val_acc'], label='验证准确率', color='red')
-    axes[0, 1].set_title('准确率曲线')
+    axes[0, 1].plot(epochs, history['train_acc'], label='Training Accuracy', color='blue')
+    axes[0, 1].plot(epochs, history['val_acc'], label='Validation Accuracy', color='red')
+    axes[0, 1].set_title('Accuracy Curves')
     axes[0, 1].set_xlabel('Epoch')
     axes[0, 1].set_ylabel('Accuracy (%)')
     axes[0, 1].legend()
     axes[0, 1].grid(True)
     
     # Top-5准确率
-    axes[1, 0].plot(epochs, history['val_top5_acc'], label='验证Top-5准确率', color='green')
-    axes[1, 0].set_title('Top-5准确率曲线')
+    axes[1, 0].plot(epochs, history['val_top5_acc'], label='Validation Top-5 Accuracy', color='green')
+    axes[1, 0].set_title('Top-5 Accuracy Curve')
     axes[1, 0].set_xlabel('Epoch')
     axes[1, 0].set_ylabel('Top-5 Accuracy (%)')
     axes[1, 0].legend()
     axes[1, 0].grid(True)
     
     # 学习率曲线
-    axes[1, 1].plot(epochs, history['lr'], label='学习率', color='orange')
-    axes[1, 1].set_title('学习率曲线')
+    axes[1, 1].plot(epochs, history['lr'], label='Learning Rate', color='orange')
+    axes[1, 1].set_title('Learning Rate Curve')
     axes[1, 1].set_xlabel('Epoch')
     axes[1, 1].set_ylabel('Learning Rate')
     axes[1, 1].legend()
@@ -243,14 +299,18 @@ def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray,
         class_names: 类别名称
         save_path: 保存路径
     """
+    # 设置中文字体支持
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'SimHei', 'Arial Unicode MS']
+    plt.rcParams['axes.unicode_minus'] = False
+    
     cm = confusion_matrix(y_true, y_pred)
     
     plt.figure(figsize=(12, 10))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=class_names, yticklabels=class_names)
-    plt.title('混淆矩阵')
-    plt.ylabel('真实标签')
-    plt.xlabel('预测标签')
+    plt.title('Confusion Matrix')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
     plt.xticks(rotation=45)
     plt.yticks(rotation=0)
     plt.tight_layout()
@@ -288,6 +348,10 @@ def plot_sample_predictions(images: torch.Tensor, true_labels: torch.Tensor,
         mean: 标准化均值
         std: 标准化标准差
     """
+    # 设置中文字体支持
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'SimHei', 'Arial Unicode MS']
+    plt.rcParams['axes.unicode_minus'] = False
+    
     num_samples = min(16, len(images))
     fig, axes = plt.subplots(4, 4, figsize=(12, 12))
     axes = axes.ravel()
@@ -304,7 +368,7 @@ def plot_sample_predictions(images: torch.Tensor, true_labels: torch.Tensor,
         color = 'green' if true_labels[i] == pred_labels[i] else 'red'
         
         axes[i].imshow(img)
-        axes[i].set_title(f'真实: {true_class}\n预测: {pred_class}', color=color, fontsize=10)
+        axes[i].set_title(f'True: {true_class}\nPred: {pred_class}', color=color, fontsize=10)
         axes[i].axis('off')
     
     plt.tight_layout()

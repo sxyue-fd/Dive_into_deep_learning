@@ -7,12 +7,12 @@ import torch
 import torch.nn as nn
 import numpy as np
 import yaml
-import argparse
 import os
 import time
 from datetime import datetime
 import logging
 from typing import Dict
+from pathlib import Path # 确保导入 Path
 
 from model import create_resnet18
 from data import create_data_loaders, CIFAR10DataLoader
@@ -25,19 +25,44 @@ from utils import (
 from visualization import ResNetVisualizer
 
 
-def parse_args():
-    """解析命令行参数"""
-    parser = argparse.ArgumentParser(description='ResNet18 CIFAR-10 训练')
-    parser.add_argument('--config', type=str, default='configs/config.yaml',
-                       help='配置文件路径')
-    parser.add_argument('--resume', type=str, default=None,
-                       help='恢复训练的检查点路径')
-    parser.add_argument('--eval-only', action='store_true',
-                       help='仅进行评估，不训练')
-    parser.add_argument('--model-path', type=str, default=None,
-                       help='用于评估的模型路径')
+def clean_old_log_files(logs_dir: str, max_files: int = 10):
+    """清理旧的日志文件，保留最近的10个
     
-    return parser.parse_args()
+    Args:
+        logs_dir: 日志目录路径
+        max_files: 保留的最大文件数量
+    """
+    try:
+        # 获取所有日志文件
+        log_files = []
+        for file in os.listdir(logs_dir):
+            if file.startswith('training_') and file.endswith('.log'):
+                file_path = os.path.join(logs_dir, file)
+                mtime = os.path.getmtime(file_path)
+                log_files.append((file_path, mtime))
+        
+        # 按修改时间排序（最新的在前）
+        log_files.sort(key=lambda x: x[1], reverse=True)
+        
+        # 删除超出数量限制的文件
+        if len(log_files) > max_files:
+            for file_path, _ in log_files[max_files:]:
+                try:
+                    os.remove(file_path)
+                    print(f"已删除旧日志文件: {os.path.basename(file_path)}")
+                except OSError as e:
+                    print(f"删除日志文件失败 {file_path}: {e}")
+                    
+        print(f"日志文件管理完成，保留了 {min(len(log_files), max_files)} 个最新文件")
+        
+    except Exception as e:
+        print(f"清理日志文件时出错: {e}")
+
+
+def get_config_path():
+    """获取配置文件路径"""
+    # 固定使用配置文件路径，不再使用命令行参数
+    return 'configs/config.yaml'
 
 
 def load_config(config_path: str) -> Dict:
@@ -222,14 +247,31 @@ def create_visualizations(model: nn.Module, data_loader_obj: CIFAR10DataLoader,
 
 def main():
     """主函数"""
-    args = parse_args()
+    # 项目根目录是 src 目录的父目录
+    project_root = Path(__file__).resolve().parent.parent
+    
+    # 获取配置文件路径
+    config_file_path_obj = Path(get_config_path())
+    if not config_file_path_obj.is_absolute():
+        # 如果路径是相对路径，则假定它是相对于项目根目录的
+        config_file_path_obj = project_root / config_file_path_obj
     
     # 加载配置
-    config = load_config(args.config)
+    config = load_config(str(config_file_path_obj))
+    
+    # 将配置中的相对路径转换为绝对路径
+    for path_key in ['logs', 'models', 'visualizations']:
+        relative_path = config['paths'][path_key]
+        config['paths'][path_key] = str(project_root / relative_path)
+    
+    # 同样处理数据路径
+    data_root = config['data']['data_root']
+    if not Path(data_root).is_absolute():
+        config['data']['data_root'] = str(project_root / data_root)
     
     # 设置日志和随机种子
     setup_logging(config)
-    set_random_seed(config['random_seed'])
+    set_random_seed(config['data']['random_seed'])
     
     logger = logging.getLogger(__name__)
     logger.info("=" * 50)
@@ -253,7 +295,10 @@ def main():
     history = None
     eval_results = None
     
-    if not args.eval_only:
+    # 根据配置文件决定运行模式
+    run_mode = config['run_mode']['mode']
+    
+    if run_mode == "train":
         # 训练模式
         logger.info("开始训练...")
         
@@ -261,9 +306,10 @@ def main():
         trainer = ResNetTrainer(model, config)
         
         # 恢复训练（如果指定）
-        if args.resume:
-            logger.info(f"从检查点恢复训练: {args.resume}")
-            checkpoint = load_checkpoint(args.resume, model, trainer.optimizer, trainer.scheduler)
+        resume_path = config['run_mode'].get('resume_path')
+        if resume_path and os.path.exists(resume_path):
+            logger.info(f"从检查点恢复训练: {resume_path}")
+            checkpoint = load_checkpoint(resume_path, model, trainer.optimizer, trainer.scheduler, device)
             start_epoch = checkpoint['epoch']
             trainer.best_val_acc = checkpoint['best_val_acc']
             trainer.train_history = checkpoint['train_history']
@@ -279,17 +325,30 @@ def main():
         # 加载最佳模型进行评估
         best_model_path = os.path.join(config['paths']['models'], 'best.pth')
         if os.path.exists(best_model_path):
-            checkpoint = load_checkpoint(best_model_path, model)
+            checkpoint = load_checkpoint(best_model_path, model, device=device)
             logger.info("已加载最佳模型进行评估")
     
-    else:
+    elif run_mode == "evaluate":
         # 评估模式
-        if args.model_path:
-            logger.info(f"加载模型: {args.model_path}")
-            checkpoint = load_checkpoint(args.model_path, model)
+        model_path = config['run_mode']['model_path']
+        if model_path:
+            # 如果模型路径是相对路径，则相对于项目根目录
+            if not Path(model_path).is_absolute():
+                model_path = str(project_root / model_path)
+            
+            if os.path.exists(model_path):
+                logger.info(f"加载模型: {model_path}")
+                checkpoint = load_checkpoint(model_path, model, device=device)
+            else:
+                logger.error(f"模型文件不存在: {model_path}")
+                return
         else:
-            logger.error("评估模式需要指定模型路径 --model-path")
+            logger.error("评估模式需要在配置文件中指定模型路径")
             return
+    
+    else:
+        logger.error(f"未知的运行模式: {run_mode}，支持的模式: 'train', 'evaluate'")
+        return
     
     # 模型评估
     logger.info("开始评估...")
@@ -301,27 +360,62 @@ def main():
         model, data_loader_obj, train_loader, test_loader,
         history, eval_results, config
     )
-    
-    # 保存最终结果
+      # 保存最终结果
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     result_file = os.path.join(config['paths']['logs'], f'final_results_{timestamp}.txt')
-    
+      # 获取训练时长和停止原因
+    training_duration = getattr(trainer, 'training_duration', 0) if 'trainer' in locals() else 0
+    stop_reason = getattr(trainer, 'stop_reason', 'Normal completion') if 'trainer' in locals() else 'Evaluation mode'
     with open(result_file, 'w', encoding='utf-8') as f:
-        f.write("ResNet18 CIFAR-10 最终结果\n")
-        f.write("=" * 40 + "\n\n")
+        f.write("ResNet18 CIFAR-10 训练结果\n")
+        f.write("=" * 50 + "\n\n")
         
+        # 训练概览
+        f.write("训练概览:\n")
+        f.write("-" * 20 + "\n")
+        f.write(f"完成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"训练耗时: {training_duration:.2f} 秒 ({training_duration/60:.1f} 分钟)\n")
+        f.write(f"完成轮数: {len(history['train_acc']) if history else 0}\n")
+        f.write(f"停止原因: {stop_reason}\n\n")
+        
+        # 模型信息
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        f.write("模型信息:\n")
+        f.write("-" * 20 + "\n")
+        f.write(f"架构: ResNet18\n")
+        f.write(f"总参数量: {total_params:,}\n")
+        f.write(f"可训练参数: {trainable_params:,}\n")
+        f.write(f"模型大小: {total_params * 4 / 1024 / 1024:.2f} MB (FP32)\n\n")
+        
+        # 性能结果
+        f.write("性能结果:\n")
+        f.write("-" * 20 + "\n")
         if eval_results:
             f.write(f"测试准确率: {eval_results['accuracy']:.2f}%\n")
-            f.write(f"测试损失: {eval_results['loss']:.4f}\n\n")
-            
-            f.write("各类别准确率:\n")
-            for class_name, acc in eval_results['class_accuracies'].items():
-                f.write(f"  {class_name}: {acc:.2f}%\n")
+            f.write(f"测试损失: {eval_results['loss']:.4f}\n")
         
         if history:
-            f.write(f"\n最佳验证准确率: {max(history['val_acc']):.2f}%\n")
+            f.write(f"最佳验证准确率: {max(history['val_acc']):.2f}%\n")
             f.write(f"最佳验证Top-5准确率: {max(history['val_top5_acc']):.2f}%\n")
             f.write(f"最终训练准确率: {history['train_acc'][-1]:.2f}%\n")
+            f.write(f"最终学习率: {history['lr'][-1]:.2e}\n\n")
+        
+        # 配置信息
+        f.write("训练配置:\n")
+        f.write("-" * 20 + "\n")
+        f.write(f"优化器: {config['training']['optimizer']}\n")
+        f.write(f"初始学习率: {config['training']['learning_rate']}\n")
+        f.write(f"批次大小: {config['data']['batch_size']}\n")
+        f.write(f"权重衰减: {config['training']['weight_decay']}\n")
+        f.write(f"目标准确率: {config['training'].get('target_accuracy', 0.95):.1%}\n")
+        f.write(f"早停耐心: {config['training']['early_stopping']['patience']}\n")
+        
+        # 数据增强信息
+        f.write(f"数据增强: 已启用 (RandomHorizontalFlip + RandomCrop)\n")
+    
+    # 清理旧的日志文件
+    clean_old_log_files(config['paths']['logs'])
     
     logger.info(f"最终结果已保存至: {result_file}")
     logger.info("项目执行完成！")

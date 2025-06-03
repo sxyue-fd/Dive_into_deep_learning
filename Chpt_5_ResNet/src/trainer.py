@@ -59,10 +59,13 @@ class ResNetTrainer:
             'val_top5_acc': [],
             'lr': []
         }
-        
-        # 最佳指标
+          # 最佳指标
         self.best_val_acc = 0.0
         self.best_epoch = 0
+        
+        # 训练统计信息
+        self.training_duration = 0.0
+        self.stop_reason = "Training not started"
         
     def _setup_optimizer(self):
         """设置优化器"""
@@ -104,16 +107,29 @@ class ResNetTrainer:
     def _setup_scheduler(self):
         """设置学习率调度器"""
         train_config = self.config['training']
-        
+        scheduler_params = train_config.get('scheduler_params', {}).copy()
+
         if train_config['scheduler'].lower() == 'cosine':
+            # 确保 CosineAnnealingLR 的参数类型正确
+            if 'T_max' in scheduler_params:
+                scheduler_params['T_max'] = int(scheduler_params['T_max'])
+            if 'eta_min' in scheduler_params:
+                scheduler_params['eta_min'] = float(scheduler_params['eta_min'])
+            
             self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
-                **train_config['scheduler_params']
+                **scheduler_params
             )
         elif train_config['scheduler'].lower() == 'step':
+            # 确保 StepLR 的参数类型正确 (例如 step_size, gamma)
+            if 'step_size' in scheduler_params:
+                scheduler_params['step_size'] = int(scheduler_params['step_size'])
+            if 'gamma' in scheduler_params:
+                scheduler_params['gamma'] = float(scheduler_params['gamma'])
+
             self.scheduler = optim.lr_scheduler.StepLR(
                 self.optimizer,
-                **train_config['scheduler_params']
+                **scheduler_params
             )
         else:
             self.scheduler = None
@@ -263,10 +279,9 @@ class ResNetTrainer:
             is_best = val_acc > self.best_val_acc
             if is_best:
                 self.best_val_acc = val_acc
-                self.best_epoch = epoch
-                
-            # 保存检查点
+                self.best_epoch = epoch            # 保存检查点
             if epoch % self.config['checkpoint']['save_frequency'] == 0 or is_best:
+                max_checkpoints = self.config['checkpoint'].get('max_checkpoints', 5)
                 save_checkpoint(
                     {
                         'epoch': epoch,
@@ -279,20 +294,107 @@ class ResNetTrainer:
                     },
                     is_best=is_best,
                     checkpoint_dir=self.config['paths']['models'],
-                    filename=f'checkpoint_{epoch}.pth'
+                    filename=f'checkpoint_{epoch}.pth',
+                    max_checkpoints=max_checkpoints
                 )
             
             # 早停检查
             self.early_stopping(val_loss)
-            if self.early_stopping.early_stop:
-                self.logger.info(f"早停触发，在epoch {epoch}停止训练")
+            
+            # 综合停止判断
+            should_stop, stop_reason = self.should_stop_training(epoch)
+            if should_stop:
+                self.logger.info(f"训练停止 - {stop_reason}")
+                self.stop_reason = stop_reason  # 记录停止原因
+                
+                # 如果是因为达到目标准确率而停止，记录特殊信息
+                if "Target accuracy" in stop_reason:
+                    self.logger.info("🎉 恭喜！模型已达到目标准确率！")
+                
                 break
         
         total_time = time.time() - start_time
+        self.training_duration = total_time  # 记录训练时长
+        
+        # 如果正常完成训练（没有提前停止）
+        if not hasattr(self, 'stop_reason') or self.stop_reason == "Training not started":
+            self.stop_reason = "Normal completion - all epochs finished"
+        
         self.logger.info(f"训练完成！总耗时: {total_time:.2f}s")
         self.logger.info(f"最佳验证准确率: {self.best_val_acc:.2f}% (Epoch {self.best_epoch})")
         
         return self.train_history
+
+    def should_stop_training(self, epoch: int) -> Tuple[bool, str]:
+        """综合判断是否应该停止训练
+        
+        Args:
+            epoch: 当前epoch数
+            
+        Returns:
+            (should_stop, reason): 是否停止和停止原因
+        """
+        # 1. 达到最大epoch数
+        if epoch >= self.config['training']['epochs']:
+            return True, "Maximum epochs reached"
+          # 2. 验证准确率达到目标（主要停止条件）
+        target_acc = float(self.config['training'].get('target_accuracy', 0.95))
+        if self.train_history['val_acc'] and len(self.train_history['val_acc']) > 0:
+            current_val_acc = self.train_history['val_acc'][-1] / 100.0  # 转换为小数
+            if current_val_acc >= target_acc:
+                return True, f"🎯 Target accuracy {target_acc:.1%} achieved (current: {current_val_acc:.1%})"
+        
+        # 3. 早停检查（基于验证损失，防止过拟合的主要机制）
+        if self.early_stopping.early_stop:
+            return True, "⏹️ Early stopping triggered - validation loss not improving (preventing overfitting)"
+          # 4. 学习率过小检查
+        current_lr = self.optimizer.param_groups[0]['lr']
+        min_lr = float(self.config['training'].get('min_learning_rate', 1e-8))
+        if current_lr < min_lr:
+            return True, f"📉 Learning rate too small: {current_lr:.2e} < {min_lr:.2e}"
+          # 辅助检测（用于提供额外信息，但不直接停止训练）
+        warnings = []
+        
+        # 损失收敛检测
+        convergence_config = self.config['training'].get('convergence', {})
+        convergence_patience = int(convergence_config.get('patience', 15))  # 增加容忍度
+        convergence_threshold = float(convergence_config.get('threshold', 1e-5))  # 更严格的阈值
+        
+        if len(self.train_history['val_loss']) >= convergence_patience:
+            recent_losses = self.train_history['val_loss'][-convergence_patience:]
+            loss_std = np.std(recent_losses)
+            if loss_std < convergence_threshold:
+                warnings.append(f"Validation loss converged (std: {loss_std:.2e})")
+        
+        # 过拟合程度检测（仅警告，不停止）
+        overfitting_config = self.config['training'].get('overfitting', {})
+        overfitting_patience = int(overfitting_config.get('patience', 5))
+        gap_threshold = float(overfitting_config.get('train_val_gap_threshold', 0.15))  # 更宽松的阈值
+        
+        if (len(self.train_history['train_acc']) >= overfitting_patience and 
+            len(self.train_history['val_acc']) >= overfitting_patience):
+            
+            recent_train_acc = self.train_history['train_acc'][-overfitting_patience:]
+            recent_val_acc = self.train_history['val_acc'][-overfitting_patience:]
+            
+            # 计算最近几个epoch的平均准确率差距
+            avg_gap = np.mean([t - v for t, v in zip(recent_train_acc, recent_val_acc)]) / 100.0
+            
+            if avg_gap > gap_threshold:
+                warnings.append(f"High train-val gap detected: {avg_gap:.1%}")
+          # 记录警告信息（但不停止训练）
+        if warnings:
+            self.logger.warning(f"Training monitoring alerts: {'; '.join(warnings)}")
+        
+        return False, ""
+    
+    def check_target_accuracy_reached(self) -> bool:
+        """检查是否达到目标准确率"""
+        target_acc = float(self.config['training'].get('target_accuracy', 0.95))
+        if self.train_history['val_acc'] and len(self.train_history['val_acc']) > 0:
+            current_val_acc = self.train_history['val_acc'][-1] / 100.0  # 转换为小数
+            return current_val_acc >= target_acc
+        return False
 
 
 # 测试代码

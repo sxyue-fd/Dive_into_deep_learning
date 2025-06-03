@@ -85,8 +85,9 @@ python -c "from test_modules import test_model; test_model()"
 ### ResNet18 结构
 
 - **输入层**：3×32×32 CIFAR-10 图像
-- **卷积层**：7×7 卷积 + BatchNorm + ReLU
-- **残差块**：4 个残差层，每层包含 2 个 BasicBlock
+- **卷积层**：3×3 卷积 + BatchNorm + ReLU
+- **残差块**：4 个残差层，每层包含 2 个 BasicBlock，每个 BasicBlock 包含两个 3×3 卷积层和恒等映射
+- **下采样**：每个残差层的第一个 BasicBlock 使用 1×1 卷积调整维度
 - **全局平均池化**：替代全连接层
 - **分类器**：单层全连接，输出 10 类概率
 
