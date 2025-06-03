@@ -41,13 +41,15 @@ class ResNetTrainer:
         
         # 损失函数
         self.criterion = nn.CrossEntropyLoss()
-        
-        # 早停机制
+          # 早停机制
         self.early_stopping = EarlyStopping(
             patience=config['training']['early_stopping']['patience'],
             min_delta=config['training']['early_stopping']['min_delta'],
             mode=config['training']['early_stopping']['mode']
         )
+        
+        # 清理旧的模型文件
+        self._clean_previous_models()
         
         # 训练历史
         self.train_history = {
@@ -130,9 +132,34 @@ class ResNetTrainer:
             self.scheduler = optim.lr_scheduler.StepLR(
                 self.optimizer,
                 **scheduler_params
-            )
+            )        
         else:
             self.scheduler = None
+    
+    def _clean_previous_models(self):
+        """清理所有之前的模型文件，为新训练做准备"""
+        models_dir = Path(self.config['paths']['models'])
+        
+        if models_dir.exists():
+            # 获取所有模型文件
+            model_files = list(models_dir.glob('*.pth')) + list(models_dir.glob('*.pt'))
+            
+            if model_files:
+                self.logger.info(f"清理 {len(model_files)} 个旧模型文件...")
+                for model_file in model_files:
+                    try:
+                        model_file.unlink()
+                        self.logger.debug(f"已删除: {model_file.name}")
+                    except Exception as e:
+                        self.logger.warning(f"删除 {model_file.name} 失败: {e}")
+                
+                self.logger.info("模型文件清理完成")
+            else:
+                self.logger.info("没有发现需要清理的旧模型文件")
+        else:
+            # 创建模型目录
+            models_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.info(f"创建模型目录: {models_dir}")
             
     def train_epoch(self, train_loader: DataLoader, epoch: int) -> Tuple[float, float]:
         """训练一个epoch
@@ -273,15 +300,12 @@ class ResNetTrainer:
                 f'验证损失: {val_loss:.4f}, 验证准确率: {val_acc:.2f}%, '
                 f'Top-5准确率: {val_top5_acc:.2f}% - '
                 f'学习率: {current_lr:.6f} - 耗时: {epoch_time:.2f}s'
-            )
-            
-            # 保存最佳模型
+            )            # 保存最佳模型
             is_best = val_acc > self.best_val_acc
             if is_best:
                 self.best_val_acc = val_acc
-                self.best_epoch = epoch            # 保存检查点
-            if epoch % self.config['checkpoint']['save_frequency'] == 0 or is_best:
-                max_checkpoints = self.config['checkpoint'].get('max_checkpoints', 5)
+                self.best_epoch = epoch
+                # 保存最佳模型
                 save_checkpoint(
                     {
                         'epoch': epoch,
@@ -292,10 +316,27 @@ class ResNetTrainer:
                         'train_history': self.train_history,
                         'config': self.config
                     },
-                    is_best=is_best,
+                    is_best=True,
                     checkpoint_dir=self.config['paths']['models'],
-                    filename=f'checkpoint_{epoch}.pth',
-                    max_checkpoints=max_checkpoints
+                    filename='best.pth'
+                )
+            
+            # 周期性保存检查点
+            save_frequency = self.config.get('checkpoint', {}).get('save_frequency', 5)
+            if epoch % save_frequency == 0:
+                save_checkpoint(
+                    {
+                        'epoch': epoch,
+                        'model_state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+                        'best_val_acc': self.best_val_acc,
+                        'train_history': self.train_history,
+                        'config': self.config
+                    },
+                    is_best=False,
+                    checkpoint_dir=self.config['paths']['models'],
+                    filename=f'checkpoint_epoch_{epoch}.pth'
                 )
             
             # 早停检查
