@@ -17,6 +17,7 @@ from pathlib import Path  # 添加导入
 
 from model import ResNet18
 from utils import AverageMeter, EarlyStopping, save_checkpoint, calculate_accuracy
+from performance_config import get_early_stopping_config
 
 
 class ResNetTrainer:
@@ -40,12 +41,13 @@ class ResNetTrainer:
         self._setup_scheduler()
         
         # 损失函数
-        self.criterion = nn.CrossEntropyLoss()
-          # 早停机制
+        self.criterion = nn.CrossEntropyLoss()        # 早停机制 - 使用兼容性函数
+        early_stopping_config = get_early_stopping_config(config)
+        
         self.early_stopping = EarlyStopping(
-            patience=config['training']['early_stopping']['patience'],
-            min_delta=config['training']['early_stopping']['min_delta'],
-            mode=config['training']['early_stopping']['mode']
+            patience=early_stopping_config['patience'],
+            min_delta=early_stopping_config['min_delta'],
+            mode=early_stopping_config['mode']
         )
         
         # 清理旧的模型文件
@@ -103,37 +105,45 @@ class ResNetTrainer:
                 weight_decay=weight_decay,
                 nesterov=optimizer_params.get('nesterov', False) # nesterov通常在optimizer_params中
             )
-        else:
-            raise ValueError(f"不支持的优化器: {train_config['optimizer']}")
+        else:            raise ValueError(f"不支持的优化器: {train_config['optimizer']}")
             
     def _setup_scheduler(self):
         """设置学习率调度器"""
         train_config = self.config['training']
+        scheduler_name = train_config.get('scheduler', '').lower()
+        
+        if not scheduler_name or scheduler_name == 'none':
+            self.scheduler = None
+            return
+            
         scheduler_params = train_config.get('scheduler_params', {}).copy()
 
-        if train_config['scheduler'].lower() == 'cosine':
-            # 确保 CosineAnnealingLR 的参数类型正确
+        if scheduler_name == 'cosine':
+            # 过滤出CosineAnnealingLR的有效参数
+            cosine_params = {}
             if 'T_max' in scheduler_params:
-                scheduler_params['T_max'] = int(scheduler_params['T_max'])
+                cosine_params['T_max'] = int(scheduler_params['T_max'])
             if 'eta_min' in scheduler_params:
-                scheduler_params['eta_min'] = float(scheduler_params['eta_min'])
+                cosine_params['eta_min'] = float(scheduler_params['eta_min'])
             
             self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
-                **scheduler_params
+                **cosine_params
             )
-        elif train_config['scheduler'].lower() == 'step':
-            # 确保 StepLR 的参数类型正确 (例如 step_size, gamma)
+        elif scheduler_name == 'step':
+            # 过滤出StepLR的有效参数
+            step_params = {}
             if 'step_size' in scheduler_params:
-                scheduler_params['step_size'] = int(scheduler_params['step_size'])
+                step_params['step_size'] = int(scheduler_params['step_size'])
             if 'gamma' in scheduler_params:
-                scheduler_params['gamma'] = float(scheduler_params['gamma'])
+                step_params['gamma'] = float(scheduler_params['gamma'])
 
             self.scheduler = optim.lr_scheduler.StepLR(
                 self.optimizer,
-                **scheduler_params
+                **step_params
             )        
         else:
+            self.logger.warning(f"未知的调度器类型: {scheduler_name}，将不使用调度器")
             self.scheduler = None
     
     def _clean_previous_models(self):

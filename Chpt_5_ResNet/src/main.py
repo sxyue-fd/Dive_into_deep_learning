@@ -23,37 +23,75 @@ from utils import (
     calculate_accuracy, load_checkpoint
 )
 from visualization import ResNetVisualizer
+from performance_config import get_early_stopping_config, get_random_seed as get_config_random_seed
 
 
 def clean_old_log_files(logs_dir: str, max_files: int = 10):
-    """清理旧的日志文件，保留最近的10个
+    """清理旧的日志文件，保留最近的10个训练会话
     
     Args:
         logs_dir: 日志目录路径
-        max_files: 保留的最大文件数量
+        max_files: 保留的最大会话数量
     """
     try:
-        # 获取所有日志文件
-        log_files = []
+        # 获取所有训练会话的时间戳
+        sessions = {}
+        
+        # 扫描日志文件
         for file in os.listdir(logs_dir):
             if file.startswith('training_') and file.endswith('.log'):
+                timestamp = file[9:-4]  # 移除 'training_' 前缀和 '.log' 后缀
                 file_path = os.path.join(logs_dir, file)
                 mtime = os.path.getmtime(file_path)
-                log_files.append((file_path, mtime))
+                sessions[timestamp] = {'log': file_path, 'result': None, 'mtime': mtime}
+        
+        # 扫描结果文件
+        for file in os.listdir(logs_dir):
+            if file.startswith('final_results_') and file.endswith('.txt'):
+                timestamp = file[14:-4]  # 移除 'final_results_' 前缀和 '.txt' 后缀
+                file_path = os.path.join(logs_dir, file)
+                if timestamp in sessions:
+                    sessions[timestamp]['result'] = file_path
+                else:
+                    # 孤立的结果文件，直接删除
+                    try:
+                        os.remove(file_path)
+                        print(f"已删除孤立的结果文件: {file}")
+                    except OSError as e:
+                        print(f"删除孤立结果文件失败 {file}: {e}")
         
         # 按修改时间排序（最新的在前）
-        log_files.sort(key=lambda x: x[1], reverse=True)
+        sorted_sessions = sorted(sessions.items(), key=lambda x: x[1]['mtime'], reverse=True)
         
-        # 删除超出数量限制的文件
-        if len(log_files) > max_files:
-            for file_path, _ in log_files[max_files:]:
+        if len(sorted_sessions) <= max_files:
+            print(f"当前有 {len(sorted_sessions)} 个训练会话，未超过限制 {max_files}")
+            return
+        
+        # 删除超出限制的会话
+        sessions_to_delete = sorted_sessions[max_files:]
+        deleted_count = 0
+        
+        for timestamp, session_data in sessions_to_delete:
+            # 删除日志文件
+            if session_data['log'] and os.path.exists(session_data['log']):
                 try:
-                    os.remove(file_path)
-                    print(f"已删除旧日志文件: {os.path.basename(file_path)}")
+                    os.remove(session_data['log'])
+                    deleted_count += 1
+                    print(f"已删除日志文件: training_{timestamp}.log")
                 except OSError as e:
-                    print(f"删除日志文件失败 {file_path}: {e}")
-                    
-        print(f"日志文件管理完成，保留了 {min(len(log_files), max_files)} 个最新文件")
+                    print(f"删除日志文件失败: {e}")
+            
+            # 删除结果文件
+            if session_data['result'] and os.path.exists(session_data['result']):
+                try:
+                    os.remove(session_data['result'])
+                    deleted_count += 1
+                    print(f"已删除结果文件: final_results_{timestamp}.txt")
+                except OSError as e:
+                    print(f"删除结果文件失败: {e}")
+        
+        remaining_sessions = min(len(sorted_sessions), max_files)
+        print(f"清理完成: 删除了 {deleted_count} 个文件，保留 {remaining_sessions} 个训练会话")
         
     except Exception as e:
         print(f"清理日志文件时出错: {e}")
@@ -61,12 +99,32 @@ def clean_old_log_files(logs_dir: str, max_files: int = 10):
 
 def get_config_path():
     """获取配置文件路径"""
-    # 固定使用配置文件路径，不再使用命令行参数
-    return 'configs/config.yaml'
+    # 优先使用性能调优配置文件，如果不存在则使用原配置文件
+    performance_config = 'configs/config_performance.yaml'
+    default_config = 'configs/config.yaml'
+    
+    # 检查性能配置文件是否存在
+    project_root = Path(__file__).resolve().parent.parent
+    performance_path = project_root / performance_config
+    
+    if performance_path.exists():
+        return performance_config
+    else:
+        return default_config
 
 
 def load_config(config_path: str) -> Dict:
     """加载配置文件"""
+    # 检查是否为性能配置文件
+    if 'performance' in config_path:
+        # 使用性能配置解析器
+        try:
+            from performance_config import load_performance_config
+            return load_performance_config(config_path)
+        except ImportError:
+            print("⚠️ 性能配置解析器未找到，使用标准配置加载")
+    
+    # 标准配置加载
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
     return config
@@ -267,11 +325,11 @@ def main():
     # 同样处理数据路径
     data_root = config['data']['data_root']
     if not Path(data_root).is_absolute():
-        config['data']['data_root'] = str(project_root / data_root)
-    
-    # 设置日志和随机种子
-    setup_logging(config)
-    set_random_seed(config['data']['random_seed'])
+        config['data']['data_root'] = str(project_root / data_root)    # 设置日志和随机种子
+    session_timestamp = setup_logging(config)
+    # 处理随机种子 - 使用兼容性函数
+    random_seed = get_config_random_seed(config)
+    set_random_seed(random_seed)
     
     logger = logging.getLogger(__name__)
     logger.info("=" * 50)
@@ -359,10 +417,8 @@ def main():
     create_visualizations(
         model, data_loader_obj, train_loader, test_loader,
         history, eval_results, config
-    )
-      # 保存最终结果
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    result_file = os.path.join(config['paths']['logs'], f'final_results_{timestamp}.txt')
+    )    # 保存最终结果 - 使用相同的时间戳
+    result_file = os.path.join(config['paths']['logs'], f'final_results_{session_timestamp}.txt')
       # 获取训练时长和停止原因
     training_duration = getattr(trainer, 'training_duration', 0) if 'trainer' in locals() else 0
     stop_reason = getattr(trainer, 'stop_reason', 'Normal completion') if 'trainer' in locals() else 'Evaluation mode'
@@ -408,8 +464,10 @@ def main():
         f.write(f"初始学习率: {config['training']['learning_rate']}\n")
         f.write(f"批次大小: {config['data']['batch_size']}\n")
         f.write(f"权重衰减: {config['training']['weight_decay']}\n")
-        f.write(f"目标准确率: {config['training'].get('target_accuracy', 0.95):.1%}\n")
-        f.write(f"早停耐心: {config['training']['early_stopping']['patience']}\n")
+        f.write(f"目标准确率: {config['training'].get('target_accuracy', 0.95):.1%}\n")        # 获取早停配置 - 使用兼容性函数
+        early_stopping_config = get_early_stopping_config(config)
+        
+        f.write(f"早停耐心: {early_stopping_config['patience']}\n")
         
         # 数据增强信息
         f.write(f"数据增强: 已启用 (RandomHorizontalFlip + RandomCrop)\n")

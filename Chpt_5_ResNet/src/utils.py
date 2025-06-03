@@ -72,6 +72,9 @@ def setup_logging(config: Dict):
     
     Args:
         config: 配置字典
+        
+    Returns:
+        str: 训练会话的时间戳
     """
     os.makedirs(config['paths']['logs'], exist_ok=True)
     
@@ -89,6 +92,8 @@ def setup_logging(config: Dict):
     
     logger = logging.getLogger(__name__)
     logger.info(f"日志已设置，文件保存至: {log_file}")
+    
+    return timestamp
 
 
 def set_random_seed(seed: int):

@@ -89,9 +89,10 @@ class CIFAR10DataLoader:
         # 分割训练集为训练和验证集
         val_size = int(len(train_dataset) * self.data_config['validation_split'])
         train_size = len(train_dataset) - val_size
-        
-        # 设置随机种子以确保可重现性
-        generator = torch.Generator().manual_seed(self.data_config['random_seed'])
+          # 设置随机种子以确保可重现性
+        # 兼容新旧配置格式的随机种子
+        random_seed = self.data_config.get('random_seed') or self.config.get('random_seed', 42)
+        generator = torch.Generator().manual_seed(random_seed)
         train_dataset, val_dataset = random_split(
             train_dataset, [train_size, val_size], generator=generator
         )
