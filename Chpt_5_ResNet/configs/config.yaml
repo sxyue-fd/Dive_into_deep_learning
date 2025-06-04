@@ -3,7 +3,7 @@
 
 # 运行模式设置
 run_mode:
-  mode: "train"  # 🟢 可修改: "train" 或 "evaluate"
+  mode: "evaluate"  # 🟢 可修改: "train" 或 "evaluate"
   model_path: "outputs/models/best.pth"  # 🟢 可修改: 评估模式时使用的模型路径
   resume_path: null  # 🟢 可修改: 训练模式时恢复训练的检查点路径（可选）
 

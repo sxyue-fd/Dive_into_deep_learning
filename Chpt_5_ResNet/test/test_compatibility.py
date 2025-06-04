@@ -9,9 +9,9 @@ import yaml
 from pathlib import Path
 
 # 添加src路径
-sys.path.append(str(Path(__file__).parent / 'src'))
+sys.path.append(str(Path(__file__).parent.parent / 'src'))
 
-from performance_config import (
+from config_parser import (
     load_performance_config, 
     get_early_stopping_config, 
     get_random_seed,
@@ -21,9 +21,8 @@ from performance_config import (
 def test_old_config_compatibility():
     """测试原始配置文件的兼容性"""
     print("🧪 测试原始配置文件兼容性...")
-    
-    # 加载原始配置文件
-    old_config_path = Path(__file__).parent / 'configs' / 'config.yaml'
+      # 加载原始配置文件
+    old_config_path = Path(__file__).parent.parent / 'configs' / 'config.yaml'
     
     with open(old_config_path, 'r', encoding='utf-8') as f:
         old_config = yaml.safe_load(f)
@@ -48,9 +47,8 @@ def test_old_config_compatibility():
 def test_performance_config():
     """测试性能配置文件"""
     print("🚀 测试性能配置文件...")
-    
-    # 加载性能配置文件
-    performance_config_path = Path(__file__).parent / 'configs' / 'config_performance.yaml'
+      # 加载性能配置文件
+    performance_config_path = Path(__file__).parent.parent / 'configs' / 'config_performance.yaml'
     
     if not performance_config_path.exists():
         print("  ⚠️ 性能配置文件不存在，跳过测试")
@@ -87,9 +85,8 @@ def test_trainer_initialization():
     try:
         from trainer import ResNetTrainer
         from model import create_resnet18
-        
-        # 使用原始配置测试
-        old_config_path = Path(__file__).parent / 'configs' / 'config.yaml'
+          # 使用原始配置测试
+        old_config_path = Path(__file__).parent.parent / 'configs' / 'config.yaml'
         with open(old_config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         
@@ -99,9 +96,8 @@ def test_trainer_initialization():
         # 创建训练器（应该能够成功初始化）
         trainer = ResNetTrainer(model, config)
         print("  ✓ 训练器初始化成功（原始配置）")
-        
-        # 如果性能配置存在，也测试它
-        performance_config_path = Path(__file__).parent / 'configs' / 'config_performance.yaml'
+          # 如果性能配置存在，也测试它
+        performance_config_path = Path(__file__).parent.parent / 'configs' / 'config_performance.yaml'
         if performance_config_path.exists():
             performance_config = load_performance_config(str(performance_config_path))
             trainer_perf = ResNetTrainer(model, performance_config)
@@ -118,9 +114,8 @@ def test_data_loader_compatibility():
     
     try:
         from data import CIFAR10DataLoader
-        
-        # 测试原始配置
-        old_config_path = Path(__file__).parent / 'configs' / 'config.yaml'
+          # 测试原始配置
+        old_config_path = Path(__file__).parent.parent / 'configs' / 'config.yaml'
         with open(old_config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         

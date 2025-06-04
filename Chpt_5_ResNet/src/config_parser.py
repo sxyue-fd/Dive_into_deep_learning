@@ -52,21 +52,21 @@ def load_performance_config(config_path: str = "configs/config_performance.yaml"
 def apply_performance_preset(base_config: Dict[str, Any], preset: Dict[str, Any]) -> Dict[str, Any]:
     """应用性能预设到基础配置"""
     config = copy.deepcopy(base_config)
-    
-    # 确保必要的配置结构存在
+      # 确保必要的配置结构存在
     ensure_nested_dict(config, ['training'])
     ensure_nested_dict(config, ['data'])
+    ensure_nested_dict(config, ['model'])
     ensure_nested_dict(config, ['device'])
     ensure_nested_dict(config, ['logging'])
     ensure_nested_dict(config, ['checkpoint'])
     ensure_nested_dict(config, ['training_monitoring', 'early_stopping'])
-    
-    # 映射预设参数到配置结构
+      # 映射预设参数到配置结构
     mapping = {
         'epochs': ['training', 'epochs'],
         'batch_size': ['data', 'batch_size'],
         'learning_rate': ['training', 'learning_rate'],
         'weight_decay': ['training', 'weight_decay'],
+        'dropout_rate': ['model', 'dropout_rate'],
         'target_accuracy': ['training', 'target_accuracy'],
         'early_stopping_patience': ['training_monitoring', 'early_stopping', 'patience'],
         'scheduler': ['training', 'scheduler'],
@@ -115,9 +115,15 @@ def apply_manual_overrides(config: Dict[str, Any], overrides: Dict[str, Any]) ->
 def apply_advanced_settings(config: Dict[str, Any], advanced: Dict[str, Any]) -> Dict[str, Any]:
     """应用高级性能设置"""
     
+    # 应用通用设置
+    common_config = advanced.get('common', {})
+    if 'mixed_precision' in common_config:
+        set_nested_value(config, ['device', 'mixed_precision'], common_config['mixed_precision'])
+    if 'num_workers' in common_config:
+        set_nested_value(config, ['data', 'num_workers'], common_config['num_workers'])
+    
     # 应用数据增强设置
-    aug_strength = advanced.get('augmentation_strength', 'medium')
-    aug_config = advanced['augmentation_configs'].get(aug_strength, {})
+    aug_config = advanced.get('augmentation', {})
     
     if 'random_horizontal_flip' in aug_config:
         set_nested_value(config, ['data', 'transforms', 'train', 'random_horizontal_flip'], 

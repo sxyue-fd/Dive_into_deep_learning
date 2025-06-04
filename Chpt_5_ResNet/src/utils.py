@@ -67,11 +67,12 @@ class EarlyStopping:
                 self.early_stop = True
 
 
-def setup_logging(config: Dict):
-    """设置日志系统
+def setup_logging(config: Dict, mode: str = "train"):
+    """设置日志系统（支持训练和评估模式分离）
     
     Args:
         config: 配置字典
+        mode: 运行模式，"train" 或 "evaluate"
         
     Returns:
         str: 训练会话的时间戳
@@ -79,19 +80,37 @@ def setup_logging(config: Dict):
     os.makedirs(config['paths']['logs'], exist_ok=True)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = os.path.join(config['paths']['logs'], f'training_{timestamp}.log')
+    
+    # 根据模式选择不同的日志文件前缀
+    if mode == "train":
+        log_file = os.path.join(config['paths']['logs'], f'training_{timestamp}.log')
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [TRAIN] %(message)s'
+    elif mode == "evaluate":
+        log_file = os.path.join(config['paths']['logs'], f'evaluation_{timestamp}.log')
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [EVAL] %(message)s'
+    else:
+        log_file = os.path.join(config['paths']['logs'], f'session_{timestamp}.log')
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [{}] %(message)s'.format(mode.upper())
+    
+    # 清除现有的处理器，避免重复日志
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
     
     logging.basicConfig(
         level=getattr(logging, config['logging']['level']),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format=log_format,
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler()
-        ]
+        ],
+        force=True  # 强制重新配置
     )
     
     logger = logging.getLogger(__name__)
-    logger.info(f"日志已设置，文件保存至: {log_file}")
+    logger.info(f"{'='*60}")
+    logger.info(f"日志系统已配置 - 模式: {mode.upper()}")
+    logger.info(f"日志文件: {log_file}")
+    logger.info(f"{'='*60}")
     
     return timestamp
 

@@ -17,7 +17,7 @@ from pathlib import Path  # 添加导入
 
 from model import ResNet18
 from utils import AverageMeter, EarlyStopping, save_checkpoint, calculate_accuracy
-from performance_config import get_early_stopping_config
+from config_parser import get_early_stopping_config
 
 
 class ResNetTrainer:
