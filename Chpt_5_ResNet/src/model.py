@@ -63,12 +63,14 @@ class ResNet18(nn.Module):
     Args:
         num_classes: 分类数量
         layers: 每个stage的block数量
+        dropout_rate: Dropout比率，应用于全连接层前
     """
 
-    def __init__(self, num_classes: int = 10, layers: List[int] = [2, 2, 2, 2]):
+    def __init__(self, num_classes: int = 10, layers: List[int] = [2, 2, 2, 2], dropout_rate: float = 0.0):
         super(ResNet18, self).__init__()
         
         self.in_channels = 64
+        self.dropout_rate = dropout_rate
         
         # 初始卷积层，适配CIFAR-10的32x32输入
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
@@ -81,8 +83,9 @@ class ResNet18(nn.Module):
         self.layer3 = self._make_layer(BasicBlock, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(BasicBlock, 512, layers[3], stride=2)
         
-        # 全局平均池化和分类层
+        # 全局平均池化、Dropout和分类层
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.dropout = nn.Dropout(p=dropout_rate) if dropout_rate > 0 else nn.Identity()
         self.fc = nn.Linear(512 * BasicBlock.expansion, num_classes)
         
         # 权重初始化
@@ -130,6 +133,7 @@ class ResNet18(nn.Module):
         
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
+        x = self.dropout(x)  # 在全连接层之前应用dropout
         x = self.fc(x)
         
         return x
@@ -158,16 +162,17 @@ class ResNet18(nn.Module):
         return features
 
 
-def create_resnet18(num_classes: int = 10) -> ResNet18:
+def create_resnet18(num_classes: int = 10, dropout_rate: float = 0.0) -> ResNet18:
     """创建ResNet18模型
     
     Args:
         num_classes: 分类数量
+        dropout_rate: Dropout比率
         
     Returns:
         ResNet18模型实例
     """
-    return ResNet18(num_classes=num_classes)
+    return ResNet18(num_classes=num_classes, dropout_rate=dropout_rate)
 
 
 # 测试代码

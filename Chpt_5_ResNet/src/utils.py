@@ -67,28 +67,52 @@ class EarlyStopping:
                 self.early_stop = True
 
 
-def setup_logging(config: Dict):
-    """设置日志系统
+def setup_logging(config: Dict, mode: str = "train"):
+    """设置日志系统（支持训练和评估模式分离）
     
     Args:
         config: 配置字典
+        mode: 运行模式，"train" 或 "evaluate"
+        
+    Returns:
+        str: 训练会话的时间戳
     """
     os.makedirs(config['paths']['logs'], exist_ok=True)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = os.path.join(config['paths']['logs'], f'training_{timestamp}.log')
+    
+    # 根据模式选择不同的日志文件前缀
+    if mode == "train":
+        log_file = os.path.join(config['paths']['logs'], f'training_{timestamp}.log')
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [TRAIN] %(message)s'
+    elif mode == "evaluate":
+        log_file = os.path.join(config['paths']['logs'], f'evaluation_{timestamp}.log')
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [EVAL] %(message)s'
+    else:
+        log_file = os.path.join(config['paths']['logs'], f'session_{timestamp}.log')
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - [{}] %(message)s'.format(mode.upper())
+    
+    # 清除现有的处理器，避免重复日志
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
     
     logging.basicConfig(
         level=getattr(logging, config['logging']['level']),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format=log_format,
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler()
-        ]
+        ],
+        force=True  # 强制重新配置
     )
     
     logger = logging.getLogger(__name__)
-    logger.info(f"日志已设置，文件保存至: {log_file}")
+    logger.info(f"{'='*60}")
+    logger.info(f"日志系统已配置 - 模式: {mode.upper()}")
+    logger.info(f"日志文件: {log_file}")
+    logger.info(f"{'='*60}")
+    
+    return timestamp
 
 
 def set_random_seed(seed: int):
@@ -136,15 +160,14 @@ def calculate_accuracy(output: torch.Tensor, target: torch.Tensor,
 
 
 def save_checkpoint(state: Dict, is_best: bool, checkpoint_dir: str, 
-                   filename: str = 'checkpoint.pth', max_checkpoints: int = 5):
-    """保存模型检查点并管理文件数量
+                   filename: str = 'checkpoint.pth'):
+    """保存模型检查点
     
     Args:
         state: 要保存的状态字典
         is_best: 是否为最佳模型
         checkpoint_dir: 保存目录
         filename: 文件名
-        max_checkpoints: 保留的最大检查点数量（不包括best.pth）
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
     
@@ -152,50 +175,24 @@ def save_checkpoint(state: Dict, is_best: bool, checkpoint_dir: str,
     checkpoint_path = os.path.join(checkpoint_dir, filename)
     torch.save(state, checkpoint_path)
     
-    # 如果是最佳模型，额外保存一份
+    # 记录保存信息
     if is_best:
-        best_path = os.path.join(checkpoint_dir, 'best.pth')
-        torch.save(state, best_path)
-    
-    # 清理旧的检查点文件（保留最新的几个）
-    clean_old_checkpoints(checkpoint_dir, max_checkpoints)
+        print(f"✓ 最佳模型已保存: {filename}")
+    else:
+        print(f"✓ 检查点已保存: {filename}")
 
 
 def clean_old_checkpoints(checkpoint_dir: str, max_checkpoints: int = 5):
     """清理旧的检查点文件，保留最新的几个
     
+    注意：此函数已废弃，不再使用检查点数量限制
+    
     Args:
         checkpoint_dir: 检查点目录
         max_checkpoints: 保留的最大检查点数量
     """
-    try:
-        # 获取所有检查点文件
-        checkpoint_files = []
-        for file in os.listdir(checkpoint_dir):
-            if file.startswith('checkpoint_') and file.endswith('.pth'):
-                file_path = os.path.join(checkpoint_dir, file)
-                # 从文件名提取epoch号
-                try:
-                    epoch_num = int(file.replace('checkpoint_', '').replace('.pth', ''))
-                    mtime = os.path.getmtime(file_path)
-                    checkpoint_files.append((file_path, epoch_num, mtime))
-                except ValueError:
-                    continue
-        
-        # 按epoch号排序（最新的在前）
-        checkpoint_files.sort(key=lambda x: x[1], reverse=True)
-        
-        # 删除超出数量限制的文件
-        if len(checkpoint_files) > max_checkpoints:
-            for file_path, epoch_num, _ in checkpoint_files[max_checkpoints:]:
-                try:
-                    os.remove(file_path)
-                    print(f"已删除旧检查点: {os.path.basename(file_path)}")
-                except OSError as e:
-                    print(f"删除检查点失败 {file_path}: {e}")
-                    
-    except Exception as e:
-        print(f"清理检查点文件时出错: {e}")
+    # 此函数已废弃，保留只是为了向后兼容
+    pass
 
 
 def load_checkpoint(checkpoint_path: str, model: torch.nn.Module, 

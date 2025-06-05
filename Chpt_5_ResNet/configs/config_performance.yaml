@@ -1,0 +1,194 @@
+# ResNet18 CIFAR-10 性能调优配置文件
+# =============================================================================
+# 🚀 训练/评估模式设置
+# =============================================================================
+
+# 运行模式
+run_mode:
+  mode: "evaluate"  # "train" 或 "evaluate"
+  model_path: "outputs/models/best.pth"  # 评估模式下的模型路径
+  resume_path: null  # 恢复训练的检查点路径
+
+# =============================================================================
+# 🎯 训练场景选择
+# =============================================================================
+
+# 🎯 训练场景选择 (修改此处切换不同的性能预设)
+performance_preset: "baseline"  # 可选: "quick_test", "baseline"
+
+# =============================================================================
+# 🎛️ 性能调优预设配置
+# =============================================================================
+performance_presets:
+  # 场景1: 快速测试 - 用于快速验证代码和模型结构
+  quick_test:
+    description: "快速测试 - 验证代码和基本功能"
+    epochs: 3
+    batch_size: 256
+    learning_rate: 0.001
+    weight_decay: 1e-4
+    dropout_rate: 0.2
+    target_accuracy: 0.70
+    early_stopping_patience: 3
+    scheduler: "step"
+    optimizer: "adam"
+    mixed_precision: true
+    num_workers: 0
+    log_frequency: 20
+    save_frequency: 2
+    
+  # 场景2: 基准验证 - 标准性能基准测试
+  baseline:
+    description: "基准验证 - 标准性能和复现性验证"
+    epochs: 100
+    batch_size: 256
+    learning_rate: 0.001
+    weight_decay: 2e-4
+    dropout_rate: 0.5
+    target_accuracy: 0.93
+    early_stopping_patience: 15
+    scheduler: "cosine"
+    optimizer: "adam"
+    mixed_precision: true
+    num_workers: 0
+    log_frequency: 20
+    save_frequency: 5
+
+# =============================================================================
+# 📊 高级性能参数
+# =============================================================================
+advanced_performance:
+  # 数据增强强度 - 中等强度
+  augmentation_strength: "medium"
+  augmentation_configs:
+    medium:
+      random_horizontal_flip: 0.5
+      random_crop_padding: 4
+  
+  # 优化器参数
+  optimizer_configs:
+    adam:
+      betas: [0.9, 0.999]
+      eps: 1e-8
+    sgd:
+      momentum: 0.9
+      nesterov: true
+  
+  # 调度器参数
+  scheduler_configs:
+    cosine:
+      T_max: 100
+      eta_min: 1e-6
+    step:
+      step_size: 30
+      gamma: 0.1
+
+# =============================================================================
+# 🏗️ 基础配置 (通常不需要修改)
+# =============================================================================
+
+# 数据配置
+data:
+  dataset: "cifar10"
+  data_root: "./data/raw"
+  validation_split: 0.2
+  shuffle: true
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
+  transforms:
+    train:
+      random_horizontal_flip: 0.5
+      random_crop:
+        size: 32
+        padding: 4
+    normalize:
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+
+# 模型配置
+model:
+  name: "resnet18"
+  num_classes: 10
+  input_channels: 3
+  dropout_rate: 0.0
+  resnet:
+    block_type: "basic"
+    layers: [2, 2, 2, 2]
+    initial_channels: 64
+    use_pretrained: false
+
+# 训练监控
+training_monitoring:
+  early_stopping:
+    min_delta: 0.001
+    monitor: "val_loss"
+    mode: "min"
+  convergence:
+    patience: 10
+    threshold: 1e-5
+  overfitting:
+    patience: 5
+    train_val_gap_threshold: 0.1
+
+# 保存设置
+checkpoint:
+  save_best: true
+  save_last: true
+  monitor: "val_accuracy"
+  mode: "max"
+  save_frequency: 5  # 默认每5个epoch保存一次检查点
+
+# 日志设置
+logging:
+  level: "INFO"
+  log_frequency: 20  # 默认每20个batch记录一次训练进度
+
+# 设备设置
+device:
+  use_cuda: true
+
+# 输出路径
+paths:
+  logs: "outputs/logs"
+  models: "outputs/models"
+  visualizations: "outputs/visualizations"
+
+# 随机种子
+random_seed: 42
+
+# 可视化设置
+visualization: {}
+
+# =============================================================================
+# 📝 使用说明
+# =============================================================================
+# 
+# 🚀 快速开始:
+# 1. 修改 run_mode.mode 选择运行模式 ("train" 或 "evaluate")
+# 2. 修改 performance_preset 选择训练场景
+# 3. 运行训练: python src/main.py
+# 
+# 📊 场景说明:
+# - quick_test: 3轮快速验证，适合调试代码，无dropout
+# - baseline: 100轮标准训练，适合性能基准，使用0.2 dropout
+# 
+# 🎛️ 评估模式:
+# 1. 设置 run_mode.mode 为 "evaluate"
+# 2. 设置 run_mode.model_path 为要评估的模型路径
+# 3. 运行: python src/main.py
+# 
+# ⚙️ 高级配置:
+# - dropout_rate: 在预设中配置或直接修改 model.dropout_rate (0.0-0.5)
+# - 数据加载优化: prefetch_factor(2), persistent_workers(true)
+# - 工作线程: num_workers(0表示主线程，>=1启用多进程)
+# 
+# ⚠️ 注意事项:
+# - 数据增强已固定为中等强度
+# - 早停机制参数可通过预设配置调整
+# - 建议先用 quick_test 验证，再用 baseline 训练
+# - 如果内存不足，可降低 batch_size 或设置 num_workers=0
+# - prefetch_factor 和 persistent_workers 仅在 num_workers>0 时生效
+# - 代码已自动处理单线程模式(num_workers=0)的参数兼容性
+# 
+# =============================================================================
