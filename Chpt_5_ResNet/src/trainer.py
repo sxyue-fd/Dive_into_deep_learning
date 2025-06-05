@@ -23,9 +23,10 @@ from config_parser import get_early_stopping_config
 class ResNetTrainer:
     """ResNet18训练器"""
     
-    def __init__(self, model: ResNet18, config: Dict):
+    def __init__(self, model: ResNet18, config: Dict, log_manager=None):
         self.model = model
         self.config = config
+        self.log_manager = log_manager  # 添加日志管理器
         self.device = torch.device('cuda' if torch.cuda.is_available() and config['device']['use_cuda'] else 'cpu')
         self.logger = logging.getLogger(__name__)
         
@@ -212,15 +213,16 @@ class ResNetTrainer:
             
             # 更新指标
             loss_meter.update(loss.item(), data.size(0))
-            acc_meter.update(acc.item(), data.size(0))
-            
-            # 记录日志
+            acc_meter.update(acc.item(), data.size(0))            # 记录训练进度日志（按log_frequency频率）
             if batch_idx % self.config['logging']['log_frequency'] == 0:
-                self.logger.info(
+                progress_msg = (
                     f'训练 Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
                     f'({100. * batch_idx / len(train_loader):.0f}%)]\t'
                     f'Loss: {loss.item():.6f}\tAcc: {acc.item():.2f}%'
                 )
+                self.logger.info(progress_msg)
+                
+                # 注意：训练进度不写入txt文件，只记录到日志
         
         epoch_time = time.time() - start_time
         self.logger.info(f'Epoch {epoch} 训练完成，耗时: {epoch_time:.2f}s')
@@ -301,16 +303,41 @@ class ResNetTrainer:
             self.train_history['val_top5_acc'].append(val_top5_acc)
             self.train_history['lr'].append(current_lr)
             
-            epoch_time = time.time() - epoch_start
-            
-            # 记录epoch结果
-            self.logger.info(
+            epoch_time = time.time() - epoch_start            # 记录epoch结果到日志（每个epoch都记录基本信息）
+            basic_log_msg = (
                 f'Epoch {epoch}/{self.config["training"]["epochs"]} - '
-                f'训练损失: {train_loss:.4f}, 训练准确率: {train_acc:.2f}% - '
-                f'验证损失: {val_loss:.4f}, 验证准确率: {val_acc:.2f}%, '
-                f'Top-5准确率: {val_top5_acc:.2f}% - '
-                f'学习率: {current_lr:.6f} - 耗时: {epoch_time:.2f}s'
-            )            # 保存最佳模型
+                f'Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}% - '
+                f'Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}% - '
+                f'Time: {epoch_time:.2f}s'
+            )
+            self.logger.info(basic_log_msg)
+            
+            # 按save_frequency频率记录详细信息到日志
+            save_frequency = self.config.get('checkpoint', {}).get('save_frequency', 5)
+            if epoch % save_frequency == 0 or epoch == self.config["training"]["epochs"]:
+                detailed_log_msg = (
+                    f'详细统计 Epoch {epoch} - '
+                    f'训练损失: {train_loss:.4f}, 训练准确率: {train_acc:.2f}% - '
+                    f'验证损失: {val_loss:.4f}, 验证准确率: {val_acc:.2f}%, '
+                    f'Top-5准确率: {val_top5_acc:.2f}% - '
+                    f'学习率: {current_lr:.6f} - 耗时: {epoch_time:.2f}s'
+                )
+                self.logger.info(detailed_log_msg)
+            
+            # 每个epoch都写入txt文件的训练摘要
+            if self.log_manager and hasattr(self.log_manager, 'write_training_summary'):
+                is_best = val_acc > self.best_val_acc
+                self.log_manager.write_training_summary(
+                    epoch=epoch,
+                    train_loss=train_loss,
+                    train_acc=train_acc,
+                    val_loss=val_loss,
+                    val_acc=val_acc,
+                    val_top5_acc=val_top5_acc,
+                    lr=current_lr,
+                    epoch_time=epoch_time,
+                    is_best=is_best
+                )# 保存最佳模型
             is_best = val_acc > self.best_val_acc
             if is_best:
                 self.best_val_acc = val_acc
@@ -348,8 +375,7 @@ class ResNetTrainer:
                     checkpoint_dir=self.config['paths']['models'],
                     filename=f'checkpoint_epoch_{epoch}.pth'
                 )
-            
-            # 早停检查
+              # 早停检查
             self.early_stopping(val_loss)
             
             # 综合停止判断
@@ -357,6 +383,15 @@ class ResNetTrainer:
             if should_stop:
                 self.logger.info(f"训练停止 - {stop_reason}")
                 self.stop_reason = stop_reason  # 记录停止原因
+                
+                # 如果有日志管理器，记录早停信息
+                if self.log_manager and hasattr(self.log_manager, 'write_early_stopping_info'):
+                    self.log_manager.write_early_stopping_info(
+                        reason=stop_reason,
+                        stopped_epoch=epoch,
+                        best_epoch=self.best_epoch,
+                        best_val_acc=self.best_val_acc
+                    )
                 
                 # 如果是因为达到目标准确率而停止，记录特殊信息
                 if "Target accuracy" in stop_reason:

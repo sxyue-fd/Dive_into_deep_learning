@@ -177,7 +177,6 @@ def print_performance_summary(config: Dict[str, Any]):
     training = config.get('training', {})
     data = config.get('data', {})
     device = config.get('device', {})
-    
     print(f"📊 训练参数:")
     print(f"   - 训练轮数: {training.get('epochs', 'N/A')}")
     print(f"   - 批次大小: {data.get('batch_size', 'N/A')}")
@@ -185,11 +184,18 @@ def print_performance_summary(config: Dict[str, Any]):
     print(f"   - 权重衰减: {training.get('weight_decay', 'N/A')}")
     print(f"   - 目标准确率: {training.get('target_accuracy', 'N/A')}")
     
+    model = config.get('model', {})
+    print(f"\n🏗️ 模型配置:")
+    print(f"   - Dropout率: {model.get('dropout_rate', 'N/A')}")
+    print(f"   - 类别数: {model.get('num_classes', 'N/A')}")
+    
     print(f"\n🔧 优化设置:")
     print(f"   - 优化器: {training.get('optimizer', 'N/A')}")
     print(f"   - 调度器: {training.get('scheduler', 'N/A')}")
     print(f"   - 混合精度: {device.get('mixed_precision', 'N/A')}")
     print(f"   - 数据线程数: {data.get('num_workers', 'N/A')}")
+    print(f"   - 预取因子: {data.get('prefetch_factor', 'N/A')}")
+    print(f"   - 持久化工作线程: {data.get('persistent_workers', 'N/A')}")
     
     print("="*60)
 

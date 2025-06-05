@@ -107,31 +107,50 @@ class CIFAR10DataLoader:
         
         self.logger.info(f"训练集大小: {len(train_dataset)}")
         self.logger.info(f"验证集大小: {len(val_dataset)}")
-        self.logger.info(f"测试集大小: {len(test_dataset)}")
+        self.logger.info(f"测试集大小: {len(test_dataset)}")        # 创建数据加载器
+        prefetch_factor = self.data_config.get('prefetch_factor', 2)
+        persistent_workers = self.data_config.get('persistent_workers', True)
+        num_workers = self.data_config['num_workers']
         
-        # 创建数据加载器
+        # 当num_workers为0时，不能使用persistent_workers和prefetch_factor
+        dataloader_kwargs = {
+            'batch_size': self.data_config['batch_size'],
+            'num_workers': num_workers,
+            'pin_memory': self.data_config['pin_memory']
+        }
+        
+        if num_workers > 0:
+            dataloader_kwargs['prefetch_factor'] = prefetch_factor
+            dataloader_kwargs['persistent_workers'] = persistent_workers
+        else:
+            # 单进程模式下不能使用这些参数
+            persistent_workers = False
+            prefetch_factor = 'N/A (单进程模式)'
+            
+        # 记录数据加载器配置
+        self.logger.info(f"数据加载器配置:")
+        self.logger.info(f"  - 批次大小: {self.data_config['batch_size']}")
+        self.logger.info(f"  - 工作线程数: {num_workers}")
+        self.logger.info(f"  - 预取因子: {prefetch_factor}")
+        self.logger.info(f"  - 持久化工作线程: {persistent_workers}")
+        self.logger.info(f"  - 内存固定: {self.data_config['pin_memory']}")
+        
         train_loader = DataLoader(
             train_dataset,
-            batch_size=self.data_config['batch_size'],
             shuffle=self.data_config['shuffle'],
-            num_workers=self.data_config['num_workers'],
-            pin_memory=self.data_config['pin_memory']
+            **dataloader_kwargs
         )
         
         val_loader = DataLoader(
             val_dataset,
-            batch_size=self.data_config['batch_size'],
             shuffle=False,
-            num_workers=self.data_config['num_workers'],
-            pin_memory=self.data_config['pin_memory']
+            **dataloader_kwargs
         )
         
         test_loader = DataLoader(
             test_dataset,
-            batch_size=self.data_config['batch_size'],
             shuffle=False,
-            num_workers=self.data_config['num_workers'],
-            pin_memory=self.data_config['pin_memory']
+            **dataloader_kwargs
         )
         
         return train_loader, val_loader, test_loader
