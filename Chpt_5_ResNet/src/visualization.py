@@ -534,3 +534,58 @@ class ResNetVisualizer:
         for t, m, s in zip(tensor, mean, std):
             t.mul_(s).add_(m)
         return tensor
+    
+    def visualize_conv_kernels(self, model, save_path: str = None):
+        """可视化第一层卷积核权重
+        
+        Args:
+            model: 模型
+            save_path: 保存路径
+        """
+        if save_path is None:
+            viz_path = self.config.get('paths', {}).get('visualizations', 'outputs/visualizations')
+            save_path = os.path.join(viz_path, 'conv_kernels.png')
+          # 获取第一层卷积层的权重
+        if hasattr(model, 'conv1'):
+            conv1_weights = model.conv1.weight.data.cpu()  # shape: (out_channels, in_channels, h, w)
+            num_kernels = min(4, conv1_weights.size(0))  # 只显示前4个卷积核
+            in_channels = conv1_weights.size(1)  # 输入通道数 (通常是3，对应RGB)
+            
+            # 创建布局：每个输入通道一行，4个卷积核一行排列
+            fig, axes = plt.subplots(in_channels, 4, figsize=(10, 2.5 * in_channels))
+            if in_channels == 1:
+                axes = [axes]
+            
+            channel_names = ['Red', 'Green', 'Blue'] if in_channels == 3 else [f'Channel {i}' for i in range(in_channels)]
+            
+            for ch in range(in_channels):
+                for i in range(4):
+                    if i < num_kernels:
+                        # 获取当前卷积核的权重
+                        kernel = conv1_weights[i, ch, :, :].numpy()
+                        
+                        # 标准化到 [0, 1] 范围便于显示
+                        kernel_norm = (kernel - kernel.min()) / (kernel.max() - kernel.min() + 1e-8)
+                        
+                        # 显示卷积核
+                        axes[ch][i].imshow(kernel_norm, cmap='viridis')
+                        axes[ch][i].set_title(f'Kernel {i+1}', fontsize=10)
+                        axes[ch][i].axis('off')
+                    else:
+                        # 隐藏多余的子图
+                        axes[ch][i].axis('off')
+                
+                # 为每行添加通道标签
+                axes[ch][0].text(-0.15, 0.5, f'{channel_names[ch]}\nChannel', 
+                               rotation=90, ha='center', va='center', 
+                               transform=axes[ch][0].transAxes, fontsize=11, fontweight='bold')
+            
+            plt.suptitle(f'First 4 Convolutional Kernels Visualization\n(Conv1 Layer: {num_kernels} kernels, {in_channels} input channels)', 
+                        fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"📊 卷积核可视化已保存至: {save_path}")
+        else:
+            print("❌ 模型中未找到conv1层，无法进行卷积核可视化")

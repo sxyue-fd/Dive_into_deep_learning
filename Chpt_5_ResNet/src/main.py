@@ -204,6 +204,13 @@ def create_visualizations(model: nn.Module, data_loader_obj: CIFAR10DataLoader,
         log_manager.log_info("✓ 特征图已保存")
     except Exception as e:
         log_manager.log_warning(f"特征图生成失败: {e}")
+    
+    # 5. 卷积核可视化
+    try:
+        visualizer.visualize_conv_kernels(model)
+        log_manager.log_info("✓ 卷积核可视化已保存")
+    except Exception as e:
+        log_manager.log_warning(f"卷积核可视化生成失败: {e}")
 
 
 def main():
